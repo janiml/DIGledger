@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Reading Ledger</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<meta name="theme-color" content="#16202b">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
+<link rel="icon" href="data:image/png;base64,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">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16202b;
+    --paper:#f6f5f1;
+    --paper-raised:#ffffff;
+    --line:#d8d4c8;
+    --teal:#0d6e74;
+    --teal-deep:#0a4f54;
+    --amber:#c4791f;
+    --muted:#6b7280;
+    --danger:#a3402f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:760px;margin:0 auto;
+    padding:calc(28px + env(safe-area-inset-top)) 20px calc(80px + env(safe-area-inset-bottom));
+  }
+
+  /* Header / ledger spine */
+  header{
+    border-bottom:3px solid var(--ink);
+    padding-bottom:14px;
+    margin-bottom:22px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:16px;
+  }
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--teal-deep);
+  }
+  .brand h1{
+    margin:0;
+    font-size:26px;
+    font-weight:700;
+    letter-spacing:-.01em;
+  }
+  .date-control{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+  .date-control label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  input[type="date"]{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:16px;
+    padding:6px 8px;
+    border:1.5px solid var(--ink);
+    background:var(--paper-raised);
+    color:var(--ink);
+    border-radius:3px;
+  }
+
+  /* Total tally */
+  .tally{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    background:var(--ink);
+    color:var(--paper);
+    border-radius:6px;
+    padding:18px 22px;
+    margin-bottom:22px;
+  }
+  .tally .label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#b9c2c6;}
+  .tally .count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8fa3a6;margin-top:4px;}
+  .tally .num{font-family:'IBM Plex Mono',monospace;font-size:46px;font-weight:700;line-height:1;color:#fff;}
+  .tally .num span{font-size:18px;color:#8fa3a6;font-weight:500;margin-left:6px;}
+
+  /* Add row */
+  .add-card{
+    background:var(--paper-raised);
+    border:1.5px solid var(--line);
+    border-radius:8px;
+    padding:16px;
+    margin-bottom:24px;
+  }
+  .add-card .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:160px;}
+  .field.qty{flex:0 0 84px;min-width:84px;}
+  .field.pts{flex:0 0 96px;min-width:96px;}
+  label.fl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  select,input[type="text"],input[type="number"]{
+    font-family:'IBM Plex Sans',sans-serif;
+    font-size:16px;
+    padding:9px 10px;
+    border:1.5px solid var(--line);
+    border-radius:5px;
+    background:#fff;
+    color:var(--ink);
+  }
+  select:focus,input:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+  .pts input{font-family:'IBM Plex Mono',monospace;font-weight:600;}
+  .add-card .row2{display:flex;gap:10px;margin-top:10px;align-items:flex-end;}
+  button{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:.03em;
+    border-radius:5px;
+    cursor:pointer;
+    border:none;
+  }
+  .btn-add{
+    background:var(--teal);
+    color:#fff;
+    padding:10px 18px;
+    white-space:nowrap;
+  }
+  .btn-add:hover{background:var(--teal-deep);}
+  .custom-toggle{
+    background:none;
+    border:1.5px dashed var(--line);
+    color:var(--muted);
+    padding:9px 12px;
+    font-size:12px;
+  }
+  .custom-toggle:hover{border-color:var(--teal);color:var(--teal-deep);}
+  .hidden{display:none !important;}
+
+  /* Entries */
+  .entries{display:flex;flex-direction:column;gap:8px;margin-bottom:30px;}
+  .entry{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-left:4px solid var(--teal);
+    border-radius:5px;
+    padding:11px 14px;
+  }
+  .entry .name{flex:1;font-size:14px;font-weight:500;}
+  .entry .meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  .entry .sub{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:var(--teal-deep);min-width:38px;text-align:right;}
+  .entry .rm{background:none;color:var(--danger);font-size:16px;padding:2px 6px;line-height:1;}
+  .entry .rm:hover{background:#f3e3df;border-radius:4px;}
+  .empty-state{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+    padding:30px 10px;
+    border:1.5px dashed var(--line);
+    border-radius:8px;
+  }
+
+  /* History */
+  .history h2{
+    font-size:13px;
+    font-family:'IBM Plex Mono',monospace;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--line);
+    padding-bottom:8px;
+    margin-bottom:10px;
+  }
+  .hist-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:9px 4px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    font-size:13px;
+  }
+  .hist-row:hover{background:#efece2;}
+  .hist-row .d{font-family:'IBM Plex Mono',monospace;color:var(--ink);}
+  .hist-row .t{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--teal-deep);}
+  .hist-row.active{background:#e4f0ef;border-left:3px solid var(--teal);padding-left:7px;}
+
+  .status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);text-align:right;margin-top:6px;min-height:14px;}
+
+  /* Scan / camera */
+  .scan-card{
+    background:var(--ink);
+    border-radius:8px;
+    padding:14px 16px;
+    margin-bottom:22px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .scan-card .txt{flex:1;}
+  .scan-card .txt h3{margin:0 0 2px;color:#fff;font-size:14px;font-weight:600;}
+  .scan-card .txt p{margin:0;color:#9aa7ab;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .btn-scan{
+    background:var(--amber);
+    color:#fff;
+    padding:11px 16px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-shrink:0;
+  }
+  .btn-scan:hover{background:#a8651a;}
+  .btn-scan svg{width:18px;height:18px;}
+
+  .scan-overlay{
+    position:fixed;inset:0;
+    background:rgba(15,18,22,.6);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:50;
+  }
+  .scan-sheet{
+    background:var(--paper);
+    width:100%;max-width:760px;
+    max-height:88vh;
+    overflow-y:auto;
+    border-radius:16px 16px 0 0;
+    padding:20px 18px calc(24px + env(safe-area-inset-bottom));
+  }
+  .scan-sheet h2{margin:0 0 4px;font-size:17px;}
+  .scan-sheet .sub{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;}
+  .scan-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:40px 10px;}
+  .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:3px solid var(--line);border-top-color:var(--teal);
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .scan-loading .lbl{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+
+  .scan-match{
+    display:flex;align-items:center;gap:10px;
+    background:var(--paper-raised);border:1px solid var(--line);border-left:4px solid var(--teal);
+    border-radius:5px;padding:10px 12px;margin-bottom:7px;
+  }
+  .scan-match .info{flex:1;min-width:0;}
+  .scan-match .info .nm{font-size:13.5px;font-weight:500;}
+  .scan-match .info .raw{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stepper{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;}
+  .stepper button{background:var(--paper);border:1px solid var(--line);width:24px;height:24px;border-radius:4px;font-size:14px;color:var(--ink);}
+  .scan-match .pts{font-weight:700;color:var(--teal-deep);min-width:30px;text-align:right;font-family:'IBM Plex Mono',monospace;}
+  .scan-match .rm2{background:none;color:var(--danger);font-size:15px;padding:2px 4px;}
+
+  .unmatched-box{
+    border:1.5px dashed var(--line);border-radius:8px;padding:10px 12px;margin:14px 0;
+  }
+  .unmatched-box summary{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);cursor:pointer;letter-spacing:.05em;text-transform:uppercase;}
+  .unmatched-box .ul-line{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8a8478;padding:4px 0;border-top:1px solid var(--line);}
+
+  .scan-actions{display:flex;gap:10px;margin-top:16px;}
+  .btn-confirm{background:var(--teal);color:#fff;padding:12px;flex:1;font-size:13.5px;}
+  .btn-cancel{background:none;border:1.5px solid var(--line);color:var(--muted);padding:12px 16px;}
+  .empty-scan{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--muted);text-align:center;padding:20px 6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="eyebrow">Radiology · Point Ledger</div>
+      <h1>Reading Ledger</h1>
+    </div>
+    <div class="date-control">
+      <label class="fl" for="dateInput">Date</label>
+      <input type="date" id="dateInput">
+    </div>
+  </header>
+
+  <div class="tally">
+    <div>
+      <div class="label">Total points</div>
+      <div class="count" id="examCount">0 exams logged</div>
+    </div>
+    <div class="num" id="totalPoints">0</div>
+  </div>
+
+  <div class="scan-card">
+    <div class="txt">
+      <h3>Scan a worklist</h3>
+      <p>Photo in → points out, on-device</p>
+    </div>
+    <button class="btn-scan" id="scanBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+      Scan
+    </button>
+    <input type="file" id="scanInput" accept="image/*" capture="environment" class="hidden">
+  </div>
+  <div style="text-align:right;margin:-14px 0 20px;">
+    <button id="diagLink" style="background:none;border:none;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:11px;text-decoration:underline;cursor:pointer;padding:4px;">Scan not working? Run a check</button>
+  </div>
+
+  <div class="add-card">
+    <div class="row">
+      <div class="field" id="presetField">
+        <label class="fl" for="examSelect">Exam</label>
+        <select id="examSelect"></select>
+      </div>
+      <div class="field" id="customNameField" style="display:none;">
+        <label class="fl" for="customName">Custom exam name</label>
+        <input type="text" id="customName" placeholder="e.g. Special procedure">
+      </div>
+      <div class="field pts" id="customPtsField" style="display:none;">
+        <label class="fl" for="customPts">Points</label>
+        <input type="number" id="customPts" min="1" step="1" placeholder="pts">
+      </div>
+      <div class="field qty">
+        <label class="fl" for="qtyInput">Qty</label>
+        <input type="number" id="qtyInput" min="1" step="1" value="1">
+      </div>
+    </div>
+    <div class="row2">
+      <button class="btn-add" id="addBtn">+ Add to ledger</button>
+      <button class="custom-toggle" id="customToggle">Custom exam / points</button>
+    </div>
+    <div class="status" id="statusLine"></div>
+  </div>
+
+  <div class="entries" id="entries"></div>
+
+  <div class="history">
+    <h2>Previous days</h2>
+    <div id="historyList"></div>
+  </div>
+
+</div>
+
+<div class="scan-overlay hidden" id="scanOverlay">
+  <div class="scan-sheet">
+    <h2 id="scanTitle">Scanning…</h2>
+    <div class="sub" id="scanSub">Reading the image on your phone</div>
+    <div id="scanBody"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+const POINT_TABLE = [
+  [1, ["Xray","US DVT","US Aorta","US Vein Mapping","NM Lymphoscintigraphy","NM Gastric Empty","OR Fluoro","CT Orbits for Metal","Mammo Addendum (self)","MM Post Biopsy"]],
+  [2, ["Xray Bilateral","CT Head","US Body","US Breast","Nuc Med (general)","CT Cardiac Calcium Score"]],
+  [3, ["Xray Bone Survey","CT Spine","CT Pelvis","CT Face","CT Orbits","CT Sinus","CT Head Perfusion","CT Head W/ and W/O","US Thyroid","US Pelvis","US Pregnancy","US Scrotum","US Arterial","Stroke CT","Fluoro done by PA"]],
+  [4, ["Screening Mammo","Mammo Addendum (another)"]],
+  [5, ["CT Chest","CT Abd","CT Abd & Pelv","CT PE","CT Neck","CT IAC","CT TEVAR","CT Myelogram","CT Spine W/ and W/O","CT Orbits W/ and W/O","MR Body","MR Brain","MR Joint","MR Spine","Fluoro done by Physician","Nuc Med Octreoscan","Nuc Med Renal Lasix Washout","Nuc Med Gallium","Paracentesis","Thoracentesis"]],
+  [7, ["CT Abd W/ and W/O","CT Abd & Pelv W/ and W/O","CT Urogram","CT Extremity W/ and W/O","CT Hi Res Chest","CTA Abd/Pelv","CTA GI Bleed","CTA Upper Extremity","CTA Watchman","MG Diagnostic (uni/bilateral)","MR Spine W/ and W/O","MR Brach Plex","MR Abd W/ and W/O","CT or MR Joint W/ and W/O"]],
+  [10, ["CTA Lower Ext Runoff","CTA Aorta","CTA Chest & Abd & Pelv","CTA Coronary Arteries","CTA Head and Neck","MR Breast","MR Pelvic Soft Tissue","MR Prostate","MR Rectum","CT Virtual Colonography","PET CT","US Procedures"]],
+  [12, ["CT Angio TAVR Protocol"]],
+  [20, ["CT Guided Procedures","MG Biopsy or Needle Loc"]],
+  [25, ["MR Breast Biopsy"]]
+];
+
+const examSelect = document.getElementById('examSelect');
+POINT_TABLE.forEach(([pts, names])=>{
+  const group = document.createElement('optgroup');
+  group.label = pts + ' point' + (pts===1?'':'s');
+  names.forEach(n=>{
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify({name:n, pts});
+    opt.textContent = n;
+    group.appendChild(opt);
+  });
+  examSelect.appendChild(group);
+});
+
+const dateInput = document.getElementById('dateInput');
+// Local storage adapter — works fully offline/standalone once downloaded.
+// (Replaces Claude's artifact-only window.storage API, which doesn't exist outside claude.ai.)
+const LocalStore = {
+  PREFIX: 'reading-ledger::',
+  async get(key){
+    const raw = localStorage.getItem(this.PREFIX + key);
+    return raw === null ? null : { key, value: raw };
+  },
+  async set(key, value){
+    localStorage.setItem(this.PREFIX + key, value);
+    return { key, value };
+  },
+  async list(prefix){
+    const keys = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith(this.PREFIX)){
+        const stripped = k.slice(this.PREFIX.length);
+        if(!prefix || stripped.startsWith(prefix)) keys.push(stripped);
+      }
+    }
+    return { keys };
+  }
+};
+const qtyInput = document.getElementById('qtyInput');
+const addBtn = document.getElementById('addBtn');
+const customToggle = document.getElementById('customToggle');
+const presetField = document.getElementById('presetField');
+const customNameField = document.getElementById('customNameField');
+const customPtsField = document.getElementById('customPtsField');
+const customName = document.getElementById('customName');
+const customPts = document.getElementById('customPts');
+const entriesEl = document.getElementById('entries');
+const totalPointsEl = document.getElementById('totalPoints');
+const examCountEl = document.getElementById('examCount');
+const historyListEl = document.getElementById('historyList');
+const statusLine = document.getElementById('statusLine');
+
+let customMode = false;
+let currentDate = todayStr();
+let currentEntries = [];
+
+function todayStr(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+
+function keyFor(dateStr){ return 'log:' + dateStr; }
+
+function setStatus(msg){
+  statusLine.textContent = msg;
+  if(msg) setTimeout(()=>{ if(statusLine.textContent===msg) statusLine.textContent=''; }, 1800);
+}
+
+customToggle.addEventListener('click', ()=>{
+  customMode = !customMode;
+  presetField.classList.toggle('hidden', customMode);
+  customNameField.style.display = customMode ? 'flex' : 'none';
+  customPtsField.style.display = customMode ? 'flex' : 'none';
+  customToggle.textContent = customMode ? 'Use exam list instead' : 'Custom exam / points';
+});
+
+async function loadDate(dateStr){
+  currentDate = dateStr;
+  dateInput.value = dateStr;
+  try{
+    const res = await LocalStore.get(keyFor(dateStr));
+    currentEntries = res ? JSON.parse(res.value) : [];
+  }catch(e){
+    currentEntries = [];
+  }
+  renderEntries();
+  await renderHistory();
+}
+
+async function saveCurrent(){
+  try{
+    await LocalStore.set(keyFor(currentDate), JSON.stringify(currentEntries));
+  }catch(e){
+    setStatus('Could not save — try again');
+  }
+}
+
+function renderEntries(){
+  entriesEl.innerHTML = '';
+  if(currentEntries.length === 0){
+    entriesEl.innerHTML = '<div class="empty-state">No exams logged for this date yet.</div>';
+  } else {
+    currentEntries.forEach((e, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'entry';
+      row.innerHTML = `
+        <div class="name">${escapeHtml(e.name)}</div>
+        <div class="meta">${e.pts} pt × ${e.qty}</div>
+        <div class="sub">${e.pts * e.qty}</div>
+        <button class="rm" data-idx="${idx}" title="Remove">✕</button>
+      `;
+      entriesEl.appendChild(row);
+    });
+  }
+  const total = currentEntries.reduce((s,e)=>s + e.pts*e.qty, 0);
+  const examTotal = currentEntries.reduce((s,e)=>s + e.qty, 0);
+  totalPointsEl.innerHTML = total + '<span>pts</span>';
+  examCountEl.textContent = examTotal + ' exam' + (examTotal===1?'':'s') + ' logged';
+
+  entriesEl.querySelectorAll('.rm').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const i = parseInt(btn.dataset.idx,10);
+      currentEntries.splice(i,1);
+      await saveCurrent();
+      renderEntries();
+      await renderHistory();
+    });
+  });
+}
+
+async function renderHistory(){
+  historyListEl.innerHTML = '';
+  let keys = [];
+  try{
+    const res = await LocalStore.list('log:');
+    keys = res ? res.keys : [];
+  }catch(e){
+    keys = [];
+  }
+  const dates = keys.map(k=>k.replace('log:','')).sort().reverse();
+  if(dates.length === 0){
+    historyListEl.innerHTML = '<div class="empty-state">No history yet — entries you log will appear here.</div>';
+    return;
+  }
+  for(const d of dates){
+    let entries = [];
+    try{
+      const res = await LocalStore.get(keyFor(d));
+      entries = res ? JSON.parse(res.value) : [];
+    }catch(e){ entries = []; }
+    const total = entries.reduce((s,e)=>s + e.pts*e.qty, 0);
+    const row = document.createElement('div');
+    row.className = 'hist-row' + (d===currentDate ? ' active' : '');
+    row.innerHTML = `<span class="d">${formatDate(d)}</span><span class="t">${total} pts</span>`;
+    row.addEventListener('click', ()=> loadDate(d));
+    historyListEl.appendChild(row);
+  }
+}
+
+function formatDate(dStr){
+  const [y,m,d] = dStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return dt.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric', year:'numeric'});
+}
+
+function escapeHtml(s){
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+addBtn.addEventListener('click', async ()=>{
+  const qty = Math.max(1, parseInt(qtyInput.value,10) || 1);
+  let name, pts;
+  if(customMode){
+    name = customName.value.trim();
+    pts = parseInt(customPts.value,10);
+    if(!name){ setStatus('Enter an exam name'); return; }
+    if(!pts || pts < 1){ setStatus('Enter a point value'); return; }
+  } else {
+    if(!examSelect.value){ setStatus('Select an exam'); return; }
+    const parsed = JSON.parse(examSelect.value);
+    name = parsed.name;
+    pts = parsed.pts;
+  }
+  const existing = currentEntries.find(e=> e.name===name && e.pts===pts);
+  if(existing){
+    existing.qty += qty;
+  } else {
+    currentEntries.push({name, pts, qty});
+  }
+  await saveCurrent();
+  renderEntries();
+  await renderHistory();
+  setStatus('Added');
+  customName.value = '';
+  customPts.value = '';
+  qtyInput.value = 1;
+});
+
+dateInput.addEventListener('change', ()=> loadDate(dateInput.value));
+
+// ---------- Worklist scan: on-device OCR + point matching ----------
+// Ordered rules: first regex match wins, so more specific patterns sit above
+// their general-purpose counterparts (e.g. "W/ AND W/O" variants before the
+// plain version of the same study).
+const SCAN_RULES = [
+  // 25
+  {pts:25, label:'MR Breast Biopsy', re:/MR\s*BREAST\s*BIOPSY/},
+  // 20
+  {pts:20, label:'CT Guided Procedure', re:/CT\s*GUIDED/},
+  {pts:20, label:'MG Biopsy / Needle Loc', re:/(LOC\s*WIRE|NEEDLE\s*LOC|MG\s*BIOPSY|MAMMO.*BIOPSY)/},
+  // 10
+  {pts:10, label:'CTA Lower Ext Runoff', re:/LOWER\s*EXT.*RUNOFF/},
+  {pts:10, label:'CTA Aorta', re:/CTA\s*AORTA/},
+  {pts:10, label:'CTA Chest/Abd/Pelv', re:/CTA.*CHEST.*ABD.*PELV/},
+  {pts:10, label:'CTA Coronary Arteries', re:/CORONARY\s*ARTER/},
+  {pts:10, label:'CTA Head and Neck', re:/CTA.*HEAD.*NECK/},
+  {pts:10, label:'MR Breast', re:/MR\s*BREAST/},
+  {pts:10, label:'MR Pelvic Soft Tissue', re:/PELVIC\s*SOFT\s*TISSUE/},
+  {pts:10, label:'MR Prostate', re:/MR\s*PROSTATE/},
+  {pts:10, label:'MR Rectum', re:/MR\s*RECTUM/},
+  {pts:10, label:'CT Virtual Colonography', re:/VIRTUAL\s*COLONOGRAPHY/},
+  {pts:10, label:'PET CT', re:/PET\s*[-\/]?\s*CT/},
+  {pts:10, label:'US Procedure', re:/US\s*PROCEDURE/},
+  // 7
+  {pts:7, label:'CT Abd W/ and W/O', re:/CT\s*ABD(?!.*PELV).*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:7, label:'CT Abd & Pelv W/ and W/O', re:/CT\s*ABD.*PELV.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:7, label:'CT Urogram', re:/UROGRAM/},
+  {pts:7, label:'CT Extremity W/ and W/O', re:/EXTREMITY.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:7, label:'CT Hi-Res Chest', re:/HI\s*-?\s*RES.*CHEST/},
+  {pts:7, label:'CTA Abd/Pelv', re:/CTA.*ABD.*PELV/},
+  {pts:7, label:'CTA GI Bleed', re:/GI\s*BLEED/},
+  {pts:7, label:'CTA Upper Extremity', re:/CTA.*UPPER\s*EXTREMITY/},
+  {pts:7, label:'CTA Watchman', re:/WATCHMAN/},
+  {pts:7, label:'MG Diagnostic', re:/(MM|MG)\s*DIAGNOSTIC|DIAGNOSTIC\s*MAMMO/},
+  {pts:7, label:'MR Spine W/ and W/O', re:/MR\s*SPINE.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:7, label:'MR Brachial Plexus', re:/BRACH.*PLEX/},
+  {pts:7, label:'MR Abd W/ and W/O', re:/MR\s*ABD.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:7, label:'CT/MR Joint W/ and W/O', re:/JOINT.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  // 5
+  {pts:5, label:'CT Chest', re:/CT\s*CHEST(?!.*PE)/},
+  {pts:5, label:'CT Angio Chest / PE', re:/(CTA\s*CHEST|CHEST.*\bPE\b|PULM.*EMBOL)/},
+  {pts:5, label:'CT Abd & Pelv', re:/CT.*ABD.*PELV|KIDNEY\s*STONE/},
+  {pts:5, label:'CT Abd', re:/CT\s*ABD\b/},
+  {pts:5, label:'CT Neck', re:/CT\s*NECK/},
+  {pts:5, label:'CT IAC', re:/\bIAC\b/},
+  {pts:12, label:'CT Angio TAVR Protocol', re:/TAVR/},
+  {pts:5, label:'CT TEVAR', re:/TEVAR/},
+  {pts:5, label:'CT Myelogram', re:/MYELOGRAM/},
+  {pts:5, label:'CT Spine W/ and W/O', re:/CT\s*SPINE.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:5, label:'CT Orbits W/ and W/O', re:/ORBIT.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:5, label:'MR Body', re:/MR\s*BODY/},
+  {pts:5, label:'MR Brain', re:/MR\s*(HEAD\s*\/?\s*BRAIN|BRAIN)/},
+  {pts:5, label:'MR Joint', re:/MR\s*JOINT/},
+  {pts:5, label:'MR Spine', re:/MR\s*SPINE/},
+  {pts:5, label:'Fluoro (Physician)', re:/FLUORO.*PHYSICIAN/},
+  {pts:5, label:'Nuc Med Octreoscan', re:/OCTREOSCAN/},
+  {pts:5, label:'Nuc Med Renal Lasix Washout', re:/RENAL\s*LASIX/},
+  {pts:5, label:'Nuc Med Gallium', re:/GALLIUM/},
+  {pts:5, label:'Paracentesis', re:/PARACENTESIS/},
+  {pts:5, label:'Thoracentesis', re:/THORACENTESIS/},
+  // 4
+  {pts:4, label:'Screening / Tomo Mammo', re:/(SCREENING\s*MAMMO|TOMO\s*SCREENING|MM\s*SCREENING)/},
+  {pts:4, label:'Mammo Addendum (another)', re:/MAMMO\s*ADDENDUM.*ANOTHER/},
+  // 3
+  {pts:3, label:'Xray Bone Survey', re:/BONE\s*SURVEY/},
+  {pts:3, label:'CT Spine', re:/CT\s*(CERVICAL\s*)?SPINE/},
+  {pts:3, label:'CT Pelvis', re:/CT\s*PELVIS/},
+  {pts:3, label:'CT Face', re:/CT\s*FACE/},
+  {pts:3, label:'CT Orbits', re:/CT\s*ORBIT/},
+  {pts:3, label:'CT Sinus', re:/CT\s*SINUS/},
+  {pts:3, label:'CT Head Perfusion', re:/HEAD\s*PERFUSION/},
+  {pts:3, label:'CT Head W/ and W/O', re:/CT\s*HEAD.*W\s*\/?\s*AND\s*W\s*\/?\s*O/},
+  {pts:3, label:'US Thyroid', re:/US\s*THYROID/},
+  {pts:3, label:'US Pelvis', re:/US\s*PELVIS/},
+  {pts:3, label:'US Pregnancy / OB', re:/US\s*OB\b|PREGNANCY/},
+  {pts:3, label:'US Scrotum', re:/SCROTUM/},
+  {pts:3, label:'US Arterial', re:/US\s*ARTERIAL/},
+  {pts:3, label:'Stroke CT', re:/STROKE\s*CT/},
+  {pts:3, label:'Fluoro (PA)', re:/FLUORO.*\bPA\b/},
+  // 2
+  {pts:2, label:'Xray Bilateral', re:/X\s*-?\s*RAY.*BILATERAL/},
+  {pts:2, label:'CT Head', re:/CT\s*HEAD\s*\/?\s*BRAIN|CT\s*HEAD\b/},
+  {pts:2, label:'US Body', re:/US\s*BODY/},
+  {pts:2, label:'US Breast', re:/US\s*BREAST/},
+  {pts:2, label:'CT Cardiac Calcium Score', re:/CALCIUM\s*SCORE/},
+  {pts:2, label:'Nuc Med (general)', re:/^NM\s|NUC\s*MED/},
+  // 1
+  {pts:1, label:'US DVT', re:/\bDVT\b/},
+  {pts:1, label:'US Aorta', re:/US\s*AORTA/},
+  {pts:1, label:'US Vein Mapping', re:/VEIN\s*MAP/},
+  {pts:1, label:'NM Lymphoscintigraphy', re:/LYMPHOSCINT|NM\s*LYMPHO/},
+  {pts:1, label:'NM Gastric Empty', re:/GASTRIC\s*EMPT/},
+  {pts:1, label:'OR Fluoro', re:/OR\s*FLUORO/},
+  {pts:1, label:'CT Orbits for Metal', re:/ORBIT.*METAL/},
+  {pts:1, label:'Mammo Addendum', re:/MAMMO\s*ADDENDUM/},
+  {pts:1, label:'MM Post Biopsy', re:/(MM|MAMMO)\s*POST\s*BIOPSY/},
+  {pts:1, label:'Xray', re:/X\s*-?\s*RAY/},
+];
+
+// Lines that are clearly not exam descriptions (dates, accession numbers,
+// status words, column headers) — skipped so they don't clutter "unmatched".
+const NOISE_RE = /^\s*$|^\d{1,2}\/\d{1,2}\/\d{2,4}|accession|complete|signed|normal|stat\b|jani|patient|mrn|^\(.*\)$|reports?\s*\/|advanced search|action$|^\d+$/i;
+
+function matchScanText(rawText){
+  const lines = rawText.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  const matches = {}; // key: label -> {label, pts, qty, raw}
+  const unmatched = [];
+  for(const line of lines){
+    // Some RIS exports spell out "CT ANGIO X" instead of "CTA X" — normalize
+    // so the CTA-prefixed rules below still catch these.
+    const upper = line.toUpperCase().replace(/CT\s*ANGIO\b/g, 'CTA');
+    let hit = null;
+    for(const rule of SCAN_RULES){
+      if(rule.re.test(upper)){ hit = rule; break; }
+    }
+    if(hit){
+      const key = hit.label + '|' + hit.pts;
+      if(!matches[key]) matches[key] = {label:hit.label, pts:hit.pts, qty:0, raw:line};
+      matches[key].qty += 1;
+    } else if(!NOISE_RE.test(line) && /[A-Za-z]{3}/.test(line)) {
+      // only keep alphabetic, non-noise lines as "unmatched" candidates
+      unmatched.push(line);
+    }
+  }
+  return { results: Object.values(matches), unmatched };
+}
+
+const scanBtn = document.getElementById('scanBtn');
+const scanInput = document.getElementById('scanInput');
+const scanOverlay = document.getElementById('scanOverlay');
+const scanTitle = document.getElementById('scanTitle');
+const scanSub = document.getElementById('scanSub');
+const scanBody = document.getElementById('scanBody');
+let pendingScanResults = [];
+
+scanBtn.addEventListener('click', ()=> scanInput.click());
+
+const diagLink = document.getElementById('diagLink');
+diagLink.addEventListener('click', runDiagnostics);
+
+async function runDiagnostics(){
+  scanOverlay.classList.remove('hidden');
+  scanTitle.textContent = 'Checking your browser…';
+  scanSub.textContent = 'Testing each piece the scanner needs';
+  scanBody.innerHTML = `<div class="scan-loading"><div class="spinner"></div><div class="lbl">Running checks…</div></div>`;
+
+  const rows = [];
+  const add = (label, ok, note)=> rows.push({label, ok, note});
+
+  add('Page address', window.location.protocol !== 'file:', window.location.protocol === 'file:' ? 'Opened as a local file — this alone can block scanning. Open from a real web link instead.' : window.location.href.slice(0,60));
+
+  const hasWorker = typeof Worker !== 'undefined';
+  add('Background worker support', hasWorker, hasWorker ? 'available' : 'not available in this browser view');
+
+  const hasWasm = typeof WebAssembly !== 'undefined';
+  add('WebAssembly support', hasWasm, hasWasm ? 'available' : 'not available in this browser view');
+
+  let workerCreates = false, workerErr = '';
+  if(hasWorker){
+    try{
+      const blob = new Blob(['self.postMessage("ok");'], {type:'application/javascript'});
+      const url = URL.createObjectURL(blob);
+      await new Promise((resolve, reject)=>{
+        const w = new Worker(url);
+        const t = setTimeout(()=>{ w.terminate(); reject(new Error('timed out')); }, 3000);
+        w.onmessage = ()=>{ clearTimeout(t); workerCreates = true; w.terminate(); resolve(); };
+        w.onerror = (e)=>{ clearTimeout(t); reject(e); };
+      });
+    }catch(e){ workerErr = (e && e.message) ? e.message : 'blocked'; }
+  }
+  add('Can actually start a worker', workerCreates, workerCreates ? 'yes' : ('blocked — ' + (workerErr||'unknown reason')));
+
+  let cdnOk = false, cdnErr = '';
+  try{
+    const res = await fetch('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js', {method:'HEAD'});
+    cdnOk = res.ok;
+  }catch(e){ cdnErr = (e && e.message) ? e.message : 'network blocked'; }
+  add('Can reach scan-engine files online', cdnOk, cdnOk ? 'yes' : ('blocked — ' + cdnErr));
+
+  const allOk = rows.every(r=>r.ok);
+  scanTitle.textContent = allOk ? 'Everything checks out' : 'Found the blocker';
+  scanSub.textContent = allOk ? 'Scanning should work — try again' : 'This is what\'s stopping the scan';
+
+  let html = '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;">';
+  rows.forEach(r=>{
+    html += `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-radius:6px;background:${r.ok?'#eaf3ee':'#f7e9e6'};border-left:4px solid ${r.ok?'var(--teal)':'var(--danger)'};">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:${r.ok?'var(--teal-deep)':'var(--danger)'};">${r.ok?'OK':'FAIL'}</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:500;">${escapeHtml(r.label)}</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(r.note)}</div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  html += `<div class="scan-actions"><button class="btn-cancel" id="diagClose">Close</button></div>`;
+  scanBody.innerHTML = html;
+  document.getElementById('diagClose').addEventListener('click', closeScan);
+}
+
+
+scanInput.addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  scanOverlay.classList.remove('hidden');
+  scanTitle.textContent = 'Reading image…';
+  scanSub.textContent = 'Running on-device text recognition';
+  scanBody.innerHTML = `<div class="scan-loading"><div class="spinner"></div><div class="lbl" id="scanProgress">Starting…</div></div>`;
+
+  try{
+    const { data } = await Tesseract.recognize(file, 'eng', {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd.wasm.js',
+      langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int',
+      logger: (m)=>{
+        const el = document.getElementById('scanProgress');
+        if(el && m.status){
+          const pct = m.progress ? ' ' + Math.round(m.progress*100) + '%' : '';
+          el.textContent = m.status + pct;
+        }
+      }
+    });
+    const { results, unmatched } = matchScanText(data.text || '');
+    pendingScanResults = results;
+    renderScanReview(unmatched);
+  }catch(err){
+    const isLocalFile = window.location.protocol === 'file:';
+    scanTitle.textContent = 'Scan failed';
+    scanSub.textContent = '';
+    let explanation;
+    if(isLocalFile){
+      explanation = `This usually isn't about the photo. The scanner needs a background process that Safari blocks when this page is opened as a downloaded local file. The fix is to open this tool from a real web link instead of the downloaded file — ask Claude for a published link, then "Add to Home Screen" from that link in Safari.`;
+    } else {
+      explanation = `The scan engine hit an error before it could read the image. You can try again, or try a different photo.`;
+    }
+    let detail = 'no error details were provided by the scan engine';
+    try{
+      if(err && err.message) detail = err.message;
+      else if(err && err.name) detail = err.name;
+      else if(typeof err === 'string' && err) detail = err;
+      else if(err) detail = JSON.stringify(err);
+    }catch(e){ /* keep default detail */ }
+    scanBody.innerHTML = `<div class="empty-scan">${escapeHtml(explanation)}</div>
+      <div class="empty-scan" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#aaa;margin-top:8px;">Technical detail: ${escapeHtml(detail)}</div>
+      <div class="scan-actions"><button class="btn-cancel" id="scanCloseErr">Close</button></div>`;
+    document.getElementById('scanCloseErr').addEventListener('click', closeScan);
+  }
+  scanInput.value = '';
+});
+
+function renderScanReview(unmatched){
+  scanTitle.textContent = pendingScanResults.length ? 'Review matches' : 'Nothing matched';
+  scanSub.textContent = pendingScanResults.length
+    ? 'Adjust counts, remove anything wrong, then add'
+    : 'Try a clearer photo, or add exams manually';
+
+  let html = '';
+  if(pendingScanResults.length === 0){
+    html += `<div class="empty-scan">No recognizable exam lines found.</div>`;
+  } else {
+    pendingScanResults.forEach((r, i)=>{
+      html += `
+        <div class="scan-match">
+          <div class="info">
+            <div class="nm">${escapeHtml(r.label)} <span style="color:var(--muted);font-weight:400;">· ${r.pts} pt</span></div>
+            <div class="raw">from: "${escapeHtml(r.raw)}"</div>
+          </div>
+          <div class="stepper">
+            <button data-act="dec" data-i="${i}">−</button>
+            <span id="qty-${i}">${r.qty}</span>
+            <button data-act="inc" data-i="${i}">+</button>
+          </div>
+          <div class="pts">${r.pts * r.qty}</div>
+          <button class="rm2" data-act="rm" data-i="${i}">✕</button>
+        </div>`;
+    });
+  }
+
+  if(unmatched.length){
+    html += `<details class="unmatched-box"><summary>${unmatched.length} line(s) not recognized</summary>`;
+    unmatched.slice(0,30).forEach(u=>{
+      html += `<div class="ul-line">${escapeHtml(u)}</div>`;
+    });
+    html += `</details>`;
+  }
+
+  html += `<div class="scan-actions">
+      <button class="btn-cancel" id="scanCancel">Cancel</button>
+      <button class="btn-confirm" id="scanConfirm" ${pendingScanResults.length ? '' : 'disabled style="opacity:.5;"'}>Add ${pendingScanResults.reduce((s,r)=>s+r.qty,0)} exam(s) to ledger</button>
+    </div>`;
+
+  scanBody.innerHTML = html;
+
+  scanBody.querySelectorAll('[data-act="inc"]').forEach(b=> b.addEventListener('click', ()=>{
+    const i = +b.dataset.i; pendingScanResults[i].qty++; renderScanReview(unmatched);
+  }));
+  scanBody.querySelectorAll('[data-act="dec"]').forEach(b=> b.addEventListener('click', ()=>{
+    const i = +b.dataset.i;
+    pendingScanResults[i].qty = Math.max(0, pendingScanResults[i].qty - 1);
+    if(pendingScanResults[i].qty === 0) pendingScanResults.splice(i,1);
+    renderScanReview(unmatched);
+  }));
+  scanBody.querySelectorAll('[data-act="rm"]').forEach(b=> b.addEventListener('click', ()=>{
+    const i = +b.dataset.i; pendingScanResults.splice(i,1); renderScanReview(unmatched);
+  }));
+  const cancelBtn = document.getElementById('scanCancel');
+  if(cancelBtn) cancelBtn.addEventListener('click', closeScan);
+  const confirmBtn = document.getElementById('scanConfirm');
+  if(confirmBtn) confirmBtn.addEventListener('click', commitScanResults);
+}
+
+async function commitScanResults(){
+  pendingScanResults.forEach(r=>{
+    if(r.qty <= 0) return;
+    const existing = currentEntries.find(e=> e.name===r.label && e.pts===r.pts);
+    if(existing) existing.qty += r.qty;
+    else currentEntries.push({name:r.label, pts:r.pts, qty:r.qty});
+  });
+  await saveCurrent();
+  renderEntries();
+  await renderHistory();
+  setStatus('Scan added to ledger');
+  closeScan();
+}
+
+function closeScan(){
+  scanOverlay.classList.add('hidden');
+  pendingScanResults = [];
+}
+
+(async ()=>{
+  await loadDate(todayStr());
+})();
+</script>
+</body>
+</html>
