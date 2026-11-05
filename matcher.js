@@ -43,6 +43,7 @@
     mammo_addendum_other: [4, 'Mammo addendum (another)'],
 
     ct_chest: [5, 'CT Chest'],
+    ct_lung_screening: [5, 'CT Lung screening (low dose)'],
     ct_abd: [5, 'CT Abd'],
     ct_abd_pelv: [5, 'CT Abd & Pelv'],
     ct_pe: [5, 'CT PE'],
@@ -113,6 +114,7 @@
     u = u.replace(/\bWO\s*\(?\s*C[O0]N(TRAST)?\b/g, ' WO ');
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
     u = u.replace(/\bMRI\b/g, 'MR');
+    u = u.replace(/\bLDCT\b/g, 'CT LDCT');
     return u.replace(/\s+/g, ' ').trim();
   }
 
@@ -171,6 +173,7 @@
       if (has(u, /ABD/) && has(u, /PELV/) || has(u, /STONE/)) return { key: has(u, WWO) ? 'ct_abd_pelv_wwo' : 'ct_abd_pelv' };
       if (has(u, /ABD/)) return { key: has(u, WWO) ? 'ct_abd_wwo' : 'ct_abd' };
       if (has(u, /\bPE\b|PULM\w*\s*EMBOL/)) return { key: 'ct_pe' };
+      if (has(u, /LUNG|CHEST|THORAX/) && has(u, /SCREE\s*N|LOW\s*-?\s*DOSE|\bLDCT\b|\bLCS\b/)) return { key: 'ct_lung_screening' };
       if (has(u, /CHEST|THORAX/)) return { key: 'ct_chest' };
       if (has(u, /ORBIT/)) {
         if (has(u, /METAL|FOREIGN|\bFB\b|MRI\s*CLEAR|PRE\s*-?\s*MR/)) return { key: 'ct_orbits_metal' };
