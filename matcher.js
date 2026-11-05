@@ -95,6 +95,8 @@
 
     ct_guided: [20, 'CT Guided procedure'],
     mg_biopsy_loc: [20, 'MG Biopsy / Needle loc'],
+    us_breast_biopsy: [20, 'US Breast biopsy'],
+    path_addendum: [0, 'Pathology addendum'],
 
     mr_breast_biopsy: [25, 'MR Breast biopsy'],
   };
@@ -140,6 +142,7 @@
     if (has(u, CT) && has(u, /GUIDED|BIOP|DRAIN|ABLAT|ASPIR/)) return { key: 'ct_guided' };
     if (has(u, MAMMO) && has(u, /POST\s*-?\s*BIOP|POST\s*PROC/)) return { key: 'mm_post_biopsy' };
     if (has(u, /LOC\s*WIRE|WIRE\s*LOC|NEEDLE\s*LOC|LOCALIZ|STEREO/) || (has(u, MAMMO) && has(u, /BIOP/))) return { key: 'mg_biopsy_loc' };
+    if (has(u, US) && has(u, /BREAST/) && has(u, /BIOP|ASPIR|\bFNA\b/)) return { key: 'us_breast_biopsy' };
     if (has(u, US) && has(u, /BIOP|ASPIR|\bFNA\b|DRAIN|GUIDED|INJECT|PROCEDURE/)) return { key: 'us_procedure' };
 
     // Cardiac / vascular CT
@@ -327,6 +330,9 @@
       if (cont && /\b(WO|W|W\/O)$/.test(exam)) exam += ' CON';
       // Dates for this row: on the same line after the accession, or on the line below it
       // (the worklist shows the exam date and time under the accession number).
+      const nextLine = lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase()) ? lines[i + 1] : '';
+      // The status column says "Addendum" when the report was amended (e.g. pathology results).
+      const addendum = /ADDEN/i.test(line.slice(acc.index + acc[0].length) + ' ' + nextLine);
       let stamps = stampsIn(line.slice(acc.index + acc[0].length));
       if (!stamps.length && lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase())) stamps = stampsIn(lines[i + 1]);
       let examDate = null, signedDate = null, signedTime = null;
@@ -340,7 +346,7 @@
       } else signedDate = listDate;
       const ageDays = examDate && signedDate ? daysBetween(examDate, signedDate) : null;
       if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
-      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays });
+      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
     }
     let workDate = listDate, best = 0;
     if (!workDate) for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
@@ -375,7 +381,18 @@
     return null;
   }
 
-  const api = { ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
+  // Breast biopsies and loc wires: the procedure counts when it's read the same day or the day after.
+  // The pathology addendum, written once results are back (usually 4+ days later), counts 0.
+  const BREAST_PROC_KEYS = ['mg_biopsy_loc', 'us_breast_biopsy', 'mr_breast_biopsy'];
+  function procedureRule(key, ageDays, addendum) {
+    if (!BREAST_PROC_KEYS.includes(key)) return null;
+    if (addendum) return 'addendum';
+    if (ageDays == null || ageDays <= 1) return 'procedure';
+    if (ageDays >= 4) return 'addendum';
+    return 'ask';
+  }
+
+  const api = { BREAST_PROC_KEYS, procedureRule, ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGMatcher = api;
 })(typeof window !== 'undefined' ? window : globalThis);

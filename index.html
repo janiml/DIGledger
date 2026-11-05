@@ -311,11 +311,12 @@ function render(){
   });
 }
 
-// Choice for a linked diagnostic mammogram / breast ultrasound whose side isn't on the list.
-function linkSelect(r){
+// Pick between a few chart entries when the worklist can't tell which one it is.
+const CHOICE_LABEL = { us_breast_linked_uni: 'US 1 side', us_breast_linked_bi: 'US both', mammo_diagnostic: 'No US', path_addendum: 'Addendum' };
+function choiceSelect(r){
   const s = document.createElement('select');
-  const opts = [['', 'Pick…', null], ['us_breast_linked_uni', 'US 1 side · ' + pointsFor('us_breast_linked_uni'), 'us_breast_linked_uni'], ['us_breast_linked_bi', 'US both · ' + pointsFor('us_breast_linked_bi'), 'us_breast_linked_bi'], ['mammo_diagnostic', 'No US · ' + pointsFor('mammo_diagnostic'), 'mammo_diagnostic']];
-  opts.forEach(([v, label]) => s.append(new Option(label, v)));
+  s.append(new Option('Pick…', ''));
+  r.choice.forEach(k => s.append(new Option((CHOICE_LABEL[k] || 'Procedure') + ' · ' + pointsFor(k), k)));
   s.value = r.points == null ? '' : r.key;
   s.addEventListener('change', () => { if(s.value){ r.key = s.value; r.points = pointsFor(s.value); } else r.points = null; s.dispatchEvent(new CustomEvent('redraw', { bubbles: true })); });
   return s;
@@ -534,15 +535,23 @@ function showReview(found, dates){
     if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
     else if(c.key) points = pointsFor(c.key);
     // Blue box: a breast ultrasound linked with its diagnostic mammogram.
-    let linkAsk = false;
+    // choice: options the reader must pick between when the list can't tell.
+    let choice = null, choiceMsg = '', noLate = false;
     if(f.linked){
       const lk = M.linkedKey(f.exam);
-      if(lk === 'ask'){ linkAsk = true; points = null; key = 'mammo_diagnostic'; c = { key }; }
+      if(lk === 'ask'){ choice = ['us_breast_linked_uni','us_breast_linked_bi','mammo_diagnostic']; choiceMsg = 'Linked ultrasound: one side or both?'; points = null; key = 'mammo_diagnostic'; c = { key }; }
       else if(lk){ key = lk; points = pointsFor(lk); c = { key }; }
     }
-    const late = f.ageDays != null && f.ageDays >= M.LATE_DAYS;
+    // Breast biopsy / loc wire: procedure if read within a day, pathology addendum (0) later.
+    const pr = M.procedureRule(key, f.ageDays, f.addendum);
+    if(pr){
+      noLate = true;
+      if(pr === 'addendum'){ choice = null; key = 'path_addendum'; points = 0; c = { key }; }
+      else if(pr === 'ask'){ choice = [key, 'path_addendum']; choiceMsg = 'Read ' + f.ageDays + ' days after the exam: the procedure or the pathology addendum?'; points = null; }
+    }
+    const late = !noLate && f.ageDays != null && f.ageDays >= M.LATE_DAYS;
     const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
-    rows.push({ linked: !!f.linked, linkAsk, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
+    rows.push({ linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
   }
 
   let workDate = current;
@@ -596,13 +605,13 @@ function showReview(found, dates){
       meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
       t.append(ex, meta);
       if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
-      if(r.linkAsk && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = 'Linked ultrasound: one side or both?'; t.append(why); }
+      if(r.choice && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.choiceMsg; t.append(why); }
       else if(r.linked && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.style.color = 'var(--teal)'; why.textContent = 'Linked exam (blue box)'; t.append(why); }
-      const sel = r.linkAsk ? linkSelect(r) : pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
+      const sel = r.choice ? choiceSelect(r) : pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
       sel.setAttribute('aria-label','Points for '+r.exam);
       if(r.skip) sel.value = 'skip';
       sel.disabled = isDup;
-      if(!r.linkAsk) sel.onchange = () => {
+      if(!r.choice) sel.onchange = () => {
         if(sel.value === 'skip'){ r.skip = true; r.points = null; }
         else { r.skip = false; r.points = sel.value===''?null:Number(sel.value); }
         draw();
