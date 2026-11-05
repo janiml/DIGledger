@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DIG Ledger</title>
+<meta name="description" content="Turns photos of your reading worklist into a daily point total.">
+<meta name="theme-color" content="#16202b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DIG Ledger">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column like a ledger page — day header, running total, then the line items. */
+:root{
+  --ink:#16202b; --paper:#f4f3ef; --raised:#ffffff; --line:#d9d5ca; --muted:#666d73;
+  --teal:#0b6c72; --teal-ink:#08494d; --teal-wash:#e2efee; --amber:#b86a14; --amber-wash:#f7ebdb;
+  --fg:#16202b; --danger:#a3402f; --danger-wash:#f6e4df; --on-ink:#f6f5f1; --on-ink-muted:#9fb0b4;
+  --sans:'IBM Plex Sans',-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#11171d; --raised:#1a222a; --line:#2c3842; --muted:#93a0a8; --ink:#0b1116;
+  --teal:#3fb3b8; --teal-ink:#7fd4d8; --teal-wash:#14302f; --amber:#e1a157; --amber-wash:#33261a;
+  --fg:#e7e9ea; --danger:#e58a77; --danger-wash:#3a211c; --on-ink:#f2f1ed; --on-ink-muted:#8ea1a6; color-scheme:dark;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--fg);font:15px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.top{background:var(--ink);color:var(--on-ink);padding:calc(14px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 18px max(16px,env(safe-area-inset-left,0px))}
+.top-inner,.wrap{max-width:640px;margin:0 auto}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--on-ink-muted)}
+.icon-btn{background:none;border:1px solid #33424e;color:var(--on-ink);border-radius:8px;padding:6px 10px;font-size:13px}
+.daynav{display:flex;align-items:center;gap:8px;margin-top:14px}
+.daynav button{background:#22303c;border:none;color:var(--on-ink);width:40px;height:40px;border-radius:10px;font-size:18px;flex:none}
+.daynav label{flex:1;position:relative;display:block}
+.daynav .daylabel{font-size:20px;font-weight:600;text-align:center;display:block;padding:6px 0}
+.daynav input[type=date]{position:absolute;inset:0;opacity:0;width:100%}
+.total{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:14px}
+.total .num{font-family:var(--mono);font-size:56px;font-weight:600;line-height:1}
+.total .num small{font-size:16px;color:var(--on-ink-muted);margin-left:6px;font-weight:400}
+.total .side{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--on-ink-muted);line-height:1.7}
+.total .side b{color:var(--on-ink);font-weight:600}
+
+.wrap{padding:18px max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px}
+.actions{display:grid;grid-template-columns:1fr auto;gap:10px}
+.btn{border:none;border-radius:12px;padding:14px 16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-primary{background:var(--teal);color:#fff}
+@media (prefers-color-scheme:dark){.btn-primary{color:#06292b}}
+.btn-quiet{background:var(--raised);border:1px solid var(--line)}
+.btn svg{width:20px;height:20px;flex:none}
+.btn:disabled{opacity:.5;cursor:default}
+.hint{font-size:13px;color:var(--muted);margin:-8px 2px 0}
+
+.install{background:var(--amber-wash);border:1px solid var(--amber);border-radius:12px;padding:12px 14px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
+.install b{display:block;margin-bottom:2px}
+.install button{margin-left:auto;background:none;border:none;color:var(--muted);font-size:18px;line-height:1;padding:0 2px}
+
+h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
+.list{background:var(--raised);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.item{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:11px 12px;border-top:1px solid var(--line)}
+.item:first-child{border-top:none}
+.item .t{min-width:0}
+.item .ex{font-weight:500;font-size:14.5px;overflow-wrap:anywhere}
+.item .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.pts{font-family:var(--mono);font-weight:600;background:var(--teal-wash);color:var(--teal-ink);border:none;border-radius:8px;padding:5px 9px;min-width:44px;text-align:center}
+.pts.ask{background:var(--amber-wash);color:var(--amber)}
+.x{background:none;border:none;color:var(--muted);font-size:18px;padding:4px 6px;border-radius:6px}
+.x:hover{color:var(--danger);background:var(--danger-wash)}
+.empty{padding:22px 16px;text-align:center;color:var(--muted);font-size:14px}
+.ptsel{font-family:var(--mono);font-weight:600;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:5px 6px}
+
+.hist .item{grid-template-columns:1fr auto;cursor:pointer}
+.hist .item.on{background:var(--teal-wash)}
+.links{display:flex;flex-wrap:wrap;gap:8px}
+.links button{background:none;border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;color:var(--muted)}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:rgba(8,12,16,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{background:var(--paper);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+.sheet h3{margin:0;font-size:18px}
+.sheet .sub{color:var(--muted);font-size:13.5px;margin-top:-10px}
+.prog{display:flex;flex-direction:column;gap:8px}
+.prow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:13.5px}
+.prow .bar2{grid-column:1/-1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.prow .bar2 i{display:block;height:100%;width:0;background:var(--teal);transition:width .3s}
+.prow.bad .bar2 i{background:var(--danger)}
+.prow .msg{grid-column:1/-1;color:var(--danger);font-size:12.5px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field span{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field input,.field select{border:1px solid var(--line);background:var(--raised);border-radius:10px;padding:10px 12px;font-size:16px;width:100%}
+.row2{display:grid;grid-template-columns:1fr 90px;gap:10px}
+.note{font-size:13px;color:var(--muted)}
+.callout{background:var(--amber-wash);border-radius:10px;padding:10px 12px;font-size:13.5px}
+.dup{opacity:.55}
+.sheet-actions{display:grid;grid-template-columns:auto 1fr;gap:10px;position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom,0px));background:var(--paper);padding:10px 0 4px}
+.why{font-size:12px;color:var(--amber)}
+.ptable{display:flex;flex-direction:column}
+.ptable .item{grid-template-columns:1fr 70px}
+.ptable input{width:70px;text-align:center;font-family:var(--mono);border:1px solid var(--line);border-radius:8px;padding:6px;background:var(--raised)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--on-ink);border-radius:10px;padding:10px 14px;font-size:14px;display:flex;gap:14px;align-items:center;z-index:30;max-width:calc(100% - 32px)}
+@media (prefers-color-scheme:dark){.toast{background:#e9ecee;color:#11171d}}
+.toast button{background:none;border:none;color:var(--amber);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="bar">
+      <div class="brand">DIG Ledger · Reading points</div>
+      <button class="icon-btn" id="settingsBtn" aria-label="Point values and backup">Settings</button>
+    </div>
+    <div class="daynav">
+      <button id="prevDay" aria-label="Previous day">‹</button>
+      <label><span class="daylabel" id="dayLabel">Today</span><input type="date" id="dayInput" aria-label="Pick a day"></label>
+      <button id="nextDay" aria-label="Next day">›</button>
+    </div>
+    <div class="total">
+      <div class="num mono" id="dayTotal">0<small>pts</small></div>
+      <div class="side" id="daySide">0 exams<br>Week <b>0</b> · Month <b>0</b></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="install" id="installTip" hidden>
+    <div id="installText"></div>
+    <button id="installClose" aria-label="Hide">×</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="scanBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Add worklist photos
+    </button>
+    <button class="btn btn-quiet" id="manualBtn">By hand</button>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+  </div>
+  <p class="hint">Pick one or more photos or screenshots of Completed Jobs. Overlapping photos are fine; repeats are skipped by accession number. Patient names are never saved.</p>
+
+  <section>
+    <h2><span>Exams this day</span><span id="exportDay" role="button" tabindex="0" style="cursor:pointer;color:var(--teal)">Export CSV</span></h2>
+    <div class="list" id="items"></div>
+  </section>
+
+  <section class="hist">
+    <h2><span>Recent days</span><span id="exportAll" role="button" tabindex="0" style="cursor:pointer;color:var(--teal)">Export all</span></h2>
+    <div class="list" id="history"></div>
+  </section>
+</main>
+
+<div class="scrim" id="sheet" hidden><div class="sheet" id="sheetBody" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="matcher.js"></script>
+<script>
+(function(){
+'use strict';
+const M = window.DIGMatcher;
+const STORE_KEY = 'digledger.v1';
+const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const $ = (id) => document.getElementById(id);
+
+// ---------- storage ----------
+function load(){
+  try{ const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s && s.days) return Object.assign({points:{},learned:{}}, s); }catch(e){}
+  return {days:{}, points:{}, learned:{}};
+}
+let state = load();
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){ toast('Could not save on this device. Free some storage and try again.'); } }
+
+const pointsFor = (key) => (key in state.points) ? state.points[key] : (M.DEFAULT_POINTS[key] ? M.DEFAULT_POINTS[key][0] : 0);
+const labelFor = (key) => M.DEFAULT_POINTS[key] ? M.DEFAULT_POINTS[key][1] : 'Set by hand';
+const POINT_STEPS = [1,2,3,4,5,7,10,12,15,20,25];
+
+// ---------- dates ----------
+const pad = (n) => String(n).padStart(2,'0');
+const iso = (d) => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parseIso = (s) => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
+const today = () => iso(new Date());
+let current = today();
+function prettyDay(s){
+  if(s === today()) return 'Today';
+  const d = parseIso(s);
+  const y = new Date(); y.setDate(y.getDate()-1);
+  if(s === iso(y)) return 'Yesterday';
+  return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric', year: d.getFullYear()===new Date().getFullYear()?undefined:'numeric'});
+}
+const dayRows = (d) => state.days[d] || [];
+const dayTotal = (d) => dayRows(d).reduce((s,r)=>s+(r.points||0),0);
+
+// ---------- render ----------
+function render(){
+  $('dayLabel').textContent = prettyDay(current);
+  $('dayInput').value = current;
+  const rows = dayRows(current);
+  $('dayTotal').innerHTML = dayTotal(current) + '<small>pts</small>';
+  const d = parseIso(current);
+  const wkStart = new Date(d); wkStart.setDate(d.getDate() - ((d.getDay()+6)%7));
+  let wk = 0, mo = 0;
+  for(const k in state.days){
+    const kd = parseIso(k);
+    if(kd >= wkStart && kd <= new Date(wkStart.getFullYear(),wkStart.getMonth(),wkStart.getDate()+6)) wk += dayTotal(k);
+    if(kd.getFullYear()===d.getFullYear() && kd.getMonth()===d.getMonth()) mo += dayTotal(k);
+  }
+  $('daySide').innerHTML = rows.length + (rows.length===1?' exam':' exams') + '<br>Week <b>'+wk+'</b> · Month <b>'+mo+'</b>';
+
+  const box = $('items'); box.textContent = '';
+  if(!rows.length){
+    box.innerHTML = '<div class="empty">No exams logged for this day yet.<br>Add worklist photos to fill it in.</div>';
+  }
+  rows.forEach((r, i) => {
+    const el = document.createElement('div'); el.className = 'item';
+    const t = document.createElement('div'); t.className = 't';
+    const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam || labelFor(r.key);
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = labelFor(r.key) + (r.accession ? ' · ' + r.accession : '') + (r.source==='manual' ? ' · by hand' : '');
+    t.append(ex, meta);
+    const sel = pointSelect(r.points, false);
+    sel.className = 'ptsel'; sel.setAttribute('aria-label','Points for '+(r.exam||'exam'));
+    sel.onchange = () => { r.points = Number(sel.value); r.edited = true; save(); render(); };
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label','Remove');
+    x.onclick = () => {
+      const removed = rows.splice(i,1)[0]; if(!rows.length) delete state.days[current]; save(); render();
+      toast('Removed ' + (removed.exam||'exam'), 'Undo', () => { (state.days[current] = state.days[current]||[]).splice(i,0,removed); save(); render(); });
+    };
+    el.append(t, sel, x); box.append(el);
+  });
+
+  const hist = $('history'); hist.textContent = '';
+  const days = Object.keys(state.days).filter(k => dayRows(k).length).sort().reverse().slice(0,30);
+  if(!days.length) hist.innerHTML = '<div class="empty">Days you log show up here.</div>';
+  days.forEach(k => {
+    const el = document.createElement('div'); el.className = 'item' + (k===current?' on':'');
+    el.tabIndex = 0;
+    el.innerHTML = '<div class="t"><div class="ex"></div><div class="meta"></div></div><div class="pts"></div>';
+    el.querySelector('.ex').textContent = prettyDay(k);
+    el.querySelector('.meta').textContent = dayRows(k).length + ' exams';
+    el.querySelector('.pts').textContent = dayTotal(k);
+    el.onclick = () => { current = k; render(); window.scrollTo({top:0,behavior:'smooth'}); };
+    hist.append(el);
+  });
+}
+
+function pointSelect(value, allowAsk){
+  const s = document.createElement('select');
+  if(allowAsk){ const o = new Option('Pick…',''); s.append(o); s.append(new Option('Skip','skip')); }
+  const steps = POINT_STEPS.slice(); if(value!=null && value!=='' && !steps.includes(Number(value))) steps.push(Number(value)), steps.sort((a,b)=>a-b);
+  steps.forEach(p => s.append(new Option(p + ' pt', String(p))));
+  if(value!=null && value!=='') s.value = String(value);
+  return s;
+}
+
+// ---------- day nav ----------
+function shift(n){ const d = parseIso(current); d.setDate(d.getDate()+n); current = iso(d); render(); }
+$('prevDay').onclick = () => shift(-1);
+$('nextDay').onclick = () => shift(1);
+$('dayInput').onchange = (e) => { if(e.target.value){ current = e.target.value; render(); } };
+
+// ---------- toast ----------
+let toastTimer;
+function toast(msg, actionLabel, action){
+  const t = $('toast'); t.textContent = '';
+  const s = document.createElement('span'); s.textContent = msg; t.append(s);
+  if(actionLabel){ const b = document.createElement('button'); b.textContent = actionLabel; b.onclick = () => { t.hidden = true; action(); }; t.append(b); }
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 5000);
+}
+
+// ---------- sheet ----------
+function openSheet(){ $('sheet').hidden = false; document.body.style.overflow = 'hidden'; return $('sheetBody'); }
+function closeSheet(){ $('sheet').hidden = true; $('sheetBody').textContent = ''; document.body.style.overflow = ''; }
+$('sheet').addEventListener('click', (e) => { if(e.target === $('sheet') && !scanning) closeSheet(); });
+
+// ---------- text reading ----------
+let tessLoad = null, worker = null, scanning = false;
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(!tessLoad) tessLoad = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = TESS_URL; s.onload = res;
+    s.onerror = () => { tessLoad = null; rej(new Error('offline')); };
+    document.head.append(s);
+  });
+  return tessLoad;
+}
+async function getWorker(onStatus){
+  await loadTesseract();
+  if(worker) return worker;
+  onStatus('Loading the text reader (first time only)…');
+  worker = await Tesseract.createWorker('eng', 1, { logger: (m) => { if(currentProgress) currentProgress(m); } });
+  await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+  return worker;
+}
+let currentProgress = null;
+
+function prepareImage(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 3000;
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth*scale), h = Math.round(img.naturalHeight*scale);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, w, h);
+      // Grayscale with a mild contrast lift — helps with photos taken of a monitor.
+      const d = g.getImageData(0,0,w,h), p = d.data;
+      for(let i=0;i<p.length;i+=4){
+        let v = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+        v = (v-128)*1.25 + 128; v = v<0?0:v>255?255:v;
+        p[i]=p[i+1]=p[i+2]=v;
+      }
+      g.putImageData(d,0,0);
+      URL.revokeObjectURL(url); resolve(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not an image this phone can open.')); };
+    img.src = url;
+  });
+}
+
+$('scanBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = (e) => { const files = Array.from(e.target.files||[]); e.target.value = ''; if(files.length) runScan(files); };
+
+async function runScan(files){
+  scanning = true;
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3>Reading ' + files.length + (files.length===1?' photo':' photos') + '</h3><div class="sub" id="scanSub">Text is read on this phone. Nothing is uploaded.</div><div class="prog" id="prog"></div>';
+  const prog = sheet.querySelector('#prog');
+  const bars = files.map((f) => {
+    const r = document.createElement('div'); r.className = 'prow';
+    r.innerHTML = '<span class="nm"></span><span class="st mono">waiting</span><div class="bar2"><i></i></div>';
+    r.querySelector('.nm').textContent = f.name || 'Photo';
+    prog.append(r); return r;
+  });
+  const sub = sheet.querySelector('#scanSub');
+  let w;
+  try{ w = await getWorker((s) => sub.textContent = s); }
+  catch(err){
+    scanning = false;
+    sheet.innerHTML = '<h3>The text reader could not load</h3><p class="note">The first scan needs an internet connection to download the reader (about 10 MB). After that it works offline. Connect and try again, or add exams by hand.</p><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-quiet" id="cl">Close</button></div>';
+    sheet.querySelector('#cl').onclick = closeSheet; return;
+  }
+  sub.textContent = 'Text is read on this phone. Nothing is uploaded.';
+  const found = []; const dates = {};
+  for(let i=0;i<files.length;i++){
+    const r = bars[i], st = r.querySelector('.st'), bar = r.querySelector('i');
+    try{
+      st.textContent = 'preparing'; bar.style.width = '8%';
+      const canvas = await prepareImage(files[i]);
+      currentProgress = (m) => { if(m.status === 'recognizing text'){ bar.style.width = Math.max(10, Math.round(m.progress*100)) + '%'; st.textContent = Math.round(m.progress*100) + '%'; } };
+      const { data } = await w.recognize(canvas);
+      currentProgress = null;
+      const parsed = M.parseWorklist(data.text || '');
+      bar.style.width = '100%';
+      if(!parsed.rows.length){
+        r.classList.add('bad'); st.textContent = 'no rows';
+        const m = document.createElement('div'); m.className = 'msg';
+        m.textContent = 'No exam rows found. Retake it closer and in focus, with the Exam and Accession columns in the frame.';
+        r.append(m);
+      } else {
+        st.textContent = parsed.rows.length + ' rows';
+        parsed.rows.forEach(x => found.push(x));
+        if(parsed.workDate) dates[parsed.workDate] = (dates[parsed.workDate]||0) + parsed.rows.length;
+      }
+    }catch(err){
+      r.classList.add('bad'); st.textContent = 'failed';
+      const m = document.createElement('div'); m.className = 'msg'; m.textContent = err && err.message ? err.message : 'Could not read this photo.'; r.append(m);
+    }
+  }
+  scanning = false;
+  showReview(found, dates);
+}
+
+function showReview(found, dates){
+  const sheet = $('sheetBody');
+  let workDate = current, best = 0;
+  for(const d in dates) if(dates[d] > best){ best = dates[d]; workDate = d; }
+
+  // Collapse repeats across overlapping photos
+  const seen = new Set(); const rows = [];
+  for(const f of found){
+    const k = M.accessionKey(f.accession);
+    if(seen.has(k)) continue; seen.add(k);
+    const norm = M.normalize(f.exam);
+    let c = M.classify(f.exam);
+    let points = null, key = c.key || null;
+    if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
+    else if(c.key) points = pointsFor(c.key);
+    rows.push({ exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true });
+  }
+
+  const keep = sheet.querySelector('#prog') ? sheet.querySelector('#prog').outerHTML : '';
+  sheet.innerHTML = '';
+  const h = document.createElement('h3'); h.textContent = rows.length ? 'Check and add' : 'Nothing to add';
+  sheet.append(h);
+  if(keep){ const wrap = document.createElement('div'); wrap.innerHTML = keep; sheet.append(wrap.firstChild); }
+  if(!rows.length){
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = 'No exam rows came out of these photos. Try again with a sharper photo taken straight on, or add exams by hand.';
+    const a = document.createElement('div'); a.className = 'sheet-actions'; a.style.gridTemplateColumns = '1fr';
+    const b = document.createElement('button'); b.className = 'btn btn-quiet'; b.textContent = 'Close'; b.onclick = closeSheet; a.append(b);
+    sheet.append(p, a); return;
+  }
+
+  const dateField = document.createElement('label'); dateField.className = 'field';
+  dateField.innerHTML = '<span>Save to day</span><input type="date" id="revDate">';
+  sheet.append(dateField);
+  const revDate = dateField.querySelector('input'); revDate.value = workDate;
+
+  const dupNote = document.createElement('div'); dupNote.className = 'note';
+  const askNote = document.createElement('div'); askNote.className = 'callout';
+  const list = document.createElement('div'); list.className = 'list';
+  sheet.append(askNote, list, dupNote);
+
+  const actions = document.createElement('div'); actions.className = 'sheet-actions';
+  const cancel = document.createElement('button'); cancel.className = 'btn btn-quiet'; cancel.textContent = 'Cancel'; cancel.onclick = closeSheet;
+  const add = document.createElement('button'); add.className = 'btn btn-primary';
+  actions.append(cancel, add); sheet.append(actions);
+
+  function existingKeys(){ return new Set(dayRows(revDate.value).map(r => r.akey).filter(Boolean)); }
+
+  function draw(){
+    const have = existingKeys();
+    list.textContent = '';
+    let n = 0, pts = 0, dups = 0, open = 0;
+    rows.forEach((r) => {
+      const isDup = have.has(r.akey); if(isDup) dups++;
+      const el = document.createElement('div'); el.className = 'item' + (isDup?' dup':'');
+      const t = document.createElement('div'); t.className = 't';
+      const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam;
+      const meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession;
+      t.append(ex, meta);
+      if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
+      const sel = pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
+      sel.setAttribute('aria-label','Points for '+r.exam);
+      if(r.skip) sel.value = 'skip';
+      sel.disabled = isDup;
+      sel.onchange = () => {
+        if(sel.value === 'skip'){ r.skip = true; r.points = null; }
+        else { r.skip = false; r.points = sel.value===''?null:Number(sel.value); }
+        draw();
+      };
+      const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label','Leave out');
+      x.onclick = () => { rows.splice(rows.indexOf(r),1); draw(); };
+      el.append(t, sel, x); list.append(el);
+      if(!isDup && !r.skip){ if(r.points==null) open++; else { n++; pts += r.points; } }
+    });
+    askNote.hidden = !rows.some(r => r.ask);
+    askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
+    dupNote.textContent = dups ? dups + ' already on ' + prettyDay(revDate.value) + ' and will be skipped.' : '';
+    add.disabled = open > 0 || n === 0;
+    add.textContent = open ? 'Pick points for ' + open + ' more' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
+  }
+  revDate.onchange = draw;
+  add.onclick = () => {
+    const day = revDate.value || current; const have = existingKeys();
+    const target = state.days[day] = state.days[day] || [];
+    let n = 0, pts = 0;
+    rows.forEach(r => {
+      if(have.has(r.akey) || r.skip || r.points==null) return;
+      if(r.ask) state.learned[r.norm] = r.points;
+      target.push({ exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() });
+      n++; pts += r.points;
+    });
+    save(); current = day; closeSheet(); render();
+    toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts');
+  };
+  draw();
+}
+
+// ---------- add by hand ----------
+$('manualBtn').onclick = () => {
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3>Add by hand</h3><label class="field"><span>Exam</span><select id="mKey"></select></label><div class="row2"><label class="field"><span>Note (optional)</span><input id="mNote" type="text" placeholder="e.g. accession or exam name"></label><label class="field"><span>Count</span><input id="mQty" type="number" min="1" value="1" inputmode="numeric"></label></div><div class="sheet-actions"><button class="btn btn-quiet" id="mCancel">Cancel</button><button class="btn btn-primary" id="mAdd">Add</button></div>';
+  const sel = sheet.querySelector('#mKey');
+  const groups = {};
+  Object.keys(M.DEFAULT_POINTS).forEach(k => { const p = pointsFor(k); (groups[p] = groups[p]||[]).push(k); });
+  Object.keys(groups).map(Number).sort((a,b)=>a-b).forEach(p => {
+    const g = document.createElement('optgroup'); g.label = p + (p===1?' point':' points');
+    groups[p].forEach(k => g.append(new Option(labelFor(k), k))); sel.append(g);
+  });
+  const qty = sheet.querySelector('#mQty'), note = sheet.querySelector('#mNote'), addB = sheet.querySelector('#mAdd');
+  const upd = () => { const q = Math.max(1, parseInt(qty.value,10)||1); addB.textContent = 'Add ' + q + ' · ' + (pointsFor(sel.value)*q) + ' pts'; };
+  sel.onchange = upd; qty.oninput = upd; upd();
+  sheet.querySelector('#mCancel').onclick = closeSheet;
+  addB.onclick = () => {
+    const q = Math.max(1, parseInt(qty.value,10)||1);
+    const target = state.days[current] = state.days[current] || [];
+    for(let i=0;i<q;i++) target.push({ exam: note.value.trim() || labelFor(sel.value), accession: '', akey: '', key: sel.value, points: pointsFor(sel.value), source: 'manual', at: Date.now() });
+    save(); closeSheet(); render(); toast('Added ' + q + ' · ' + pointsFor(sel.value)*q + ' pts');
+  };
+};
+
+// ---------- export ----------
+const csvCell = (v) => { const s = String(v==null?'':v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+function toCsv(days){
+  const out = [['date','accession','exam','category','points','source'].join(',')];
+  days.forEach(d => dayRows(d).forEach(r => out.push([d, r.accession, r.exam, labelFor(r.key), r.points, r.source].map(csvCell).join(','))));
+  return out.join('\n') + '\n';
+}
+async function shareFile(name, text, type){
+  const blob = new Blob([text], { type });
+  try{
+    const file = new File([blob], name, { type });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], title: name }); return; }
+  }catch(e){ if(e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const onKey = (el, fn) => { el.onclick = fn; el.onkeydown = (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fn(); } }; };
+onKey($('exportDay'), () => { if(!dayRows(current).length) return toast('Nothing logged on this day yet.'); shareFile('dig-ledger-' + current + '.csv', toCsv([current]), 'text/csv'); });
+onKey($('exportAll'), () => { const ds = Object.keys(state.days).filter(k => dayRows(k).length).sort(); if(!ds.length) return toast('Nothing logged yet.'); shareFile('dig-ledger-all.csv', toCsv(ds), 'text/csv'); });
+
+// ---------- settings ----------
+$('settingsBtn').onclick = () => {
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3>Point values</h3><div class="sub">Changes apply to exams you add from now on.</div><div class="list ptable" id="pt"></div><div class="links"><button id="resetPts">Reset to chart</button><button id="forget">Forget picks for unlisted exams</button></div><h3>Backup</h3><div class="sub">Your log lives on this phone only. Save a backup file now and then.</div><div class="links"><button id="backup">Save backup</button><button id="restore">Restore from backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-primary" id="done">Done</button></div>';
+  const pt = sheet.querySelector('#pt');
+  Object.keys(M.DEFAULT_POINTS).sort((a,b)=>pointsFor(a)-pointsFor(b)).forEach(k => {
+    const el = document.createElement('label'); el.className = 'item';
+    const t = document.createElement('span'); t.className = 'ex'; t.textContent = labelFor(k);
+    const inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.inputMode = 'numeric'; inp.value = pointsFor(k); inp.id = 'pt-' + k;
+    inp.onchange = () => { const v = Number(inp.value); if(v === M.DEFAULT_POINTS[k][0]) delete state.points[k]; else state.points[k] = v; save(); };
+    el.append(t, inp); pt.append(el);
+  });
+  sheet.querySelector('#resetPts').onclick = () => { state.points = {}; save(); closeSheet(); $('settingsBtn').click(); toast('Point values reset to the chart'); };
+  sheet.querySelector('#forget').onclick = () => { const n = Object.keys(state.learned).length; state.learned = {}; save(); toast('Forgot ' + n + ' saved picks'); };
+  sheet.querySelector('#backup').onclick = () => shareFile('dig-ledger-backup-' + today() + '.json', JSON.stringify(state), 'application/json');
+  const rf = sheet.querySelector('#restoreFile');
+  sheet.querySelector('#restore').onclick = () => rf.click();
+  rf.onchange = async () => {
+    const f = rf.files[0]; if(!f) return;
+    try{
+      const s = JSON.parse(await f.text()); if(!s || typeof s.days !== 'object') throw 0;
+      state = Object.assign({points:{},learned:{}}, s); save(); closeSheet(); render(); toast('Backup restored');
+    }catch(e){ toast('That file is not a DIG Ledger backup.'); }
+  };
+  sheet.querySelector('#done').onclick = () => { closeSheet(); render(); };
+};
+
+// ---------- install help ----------
+const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+let deferredPrompt = null;
+function showInstall(html, withButton){
+  try{ if(localStorage.getItem('digledger.hideInstall')) return; }catch(e){}
+  $('installText').innerHTML = html; $('installTip').hidden = false;
+  if(withButton){ const b = document.createElement('button'); b.className = 'btn btn-primary'; b.style.cssText='margin-top:8px;padding:8px 12px;font-size:14px'; b.textContent = 'Install app';
+    b.onclick = async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; $('installTip').hidden = true; }; $('installText').append(b); }
+}
+$('installClose').onclick = () => { $('installTip').hidden = true; try{ localStorage.setItem('digledger.hideInstall','1'); }catch(e){} };
+if(!standalone){
+  if(/iphone|ipad|ipod/i.test(navigator.userAgent)) showInstall('<b>Install on your iPhone</b>In Safari, tap the Share button, then <b>Add to Home Screen</b>.');
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; showInstall('<b>Install on this phone</b>Opens full screen from your home screen and works offline.', true); });
+}
+if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+render();
+})();
+</script>
+</body>
+</html>
