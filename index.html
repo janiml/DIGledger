@@ -713,6 +713,7 @@ function mergeSchedule(p){
   for(const n in p.byName){ all[n] = Object.assign(all[n] || {}, p.byName[n]); }
   const allDates = [...new Set([...(old ? Object.keys(old.span || {}) : []), ...p.dates])].sort();
   const span = {}; allDates.forEach(d => span[d] = 1);
+  for(const n in all) if(!S.isListed(n)) delete all[n];
   const names = Object.keys(all).filter(n => Object.keys(all[n]).length).sort();
   const name = old && names.includes(old.name) ? old.name : null;
   state.schedule = Object.assign({}, old, { all, names, span, from: allDates[0], to: allDates[allDates.length-1], name, days: name ? all[name] : {} });
@@ -736,7 +737,7 @@ function askName(){
   sheet.innerHTML = '<h3>Who are you on the schedule?</h3><div class="sub">Pick your name once to see each day\'s point target and your bonus. You can change it later in Settings.</div><label class="field"><span>Your name</span><select id="askWho"></select></label><div class="sheet-actions"><button class="btn btn-quiet" id="askLater">Not now</button><button class="btn btn-primary" id="askOk" disabled>Save</button></div>';
   const sel = sheet.querySelector('#askWho'), ok = sheet.querySelector('#askOk');
   sel.append(new Option('Pick your name…', ''));
-  state.schedule.names.forEach(n => sel.append(new Option(n, n)));
+  state.schedule.names.filter(S.isListed).forEach(n => sel.append(new Option(n, n)));
   sel.onchange = () => { ok.disabled = !sel.value; };
   sheet.querySelector('#askLater').onclick = closeSheet;
   ok.onclick = () => { state.schedule.name = sel.value; state.schedule.days = state.schedule.all[sel.value] || {}; save(); closeSheet(); render(); toast('Showing targets for ' + sel.value); };
@@ -750,7 +751,7 @@ function setupSchedule(sheet){
     whoField.hidden = clear.hidden = !sc;
     if(!sc){ status.textContent = 'No schedule loaded yet.'; return; }
     if(!sc.name) who.append(new Option('Pick your name…', ''));
-    sc.names.forEach(n => who.append(new Option(n, n))); who.value = sc.name || '';
+    sc.names.filter(S.isListed).forEach(n => who.append(new Option(n, n))); who.value = sc.name || '';
     const dates = Object.keys(sc.all[sc.name] || {}).sort();
     status.textContent = 'Loaded ' + prettyDay(sc.from) + ' to ' + prettyDay(sc.to) + ' · ' + dates.length + ' days for ' + (sc.name || 'nobody yet');
     const seen = new Map();

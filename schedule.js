@@ -27,6 +27,11 @@
 
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
+  // People on the export who don't use the ledger (PAs, locums, office staff); left out of the name list.
+  const HIDDEN_NAMES = ['B Patel', 'Bossier', 'Coughlin', 'Johnson', 'Kardos', 'Landauer', 'Locum 1', 'Vistelle', 'Hardin'];
+  const hiddenSet = new Set(HIDDEN_NAMES.map(n => n.toLowerCase()));
+  const isListed = (name) => !hiddenSet.has(clean(name).toLowerCase());
+
   // Returns { dates, names, byName: { name: { 'YYYY-MM-DD': [assignment, ...] } } }
   function parseSchedule(text) {
     const rows = parseCsv(text);
@@ -45,6 +50,7 @@
         (days[d] = days[d] || []).push(assignment);
       }
     }
+    for (const n of Object.keys(byName)) if (!isListed(n)) delete byName[n];
     return { dates: cols.map(c => c[1]), names: Object.keys(byName).sort(), byName };
   }
 
@@ -130,7 +136,7 @@
     return today ? signedDate : prev;
   }
 
-  const api = { shiftHours, readingShift, creditDay, addDays, parseCsv, parseSchedule, defaultTarget, dayTarget, bonus, BONUS_PER_POINT };
+  const api = { HIDDEN_NAMES, isListed, shiftHours, readingShift, creditDay, addDays, parseCsv, parseSchedule, defaultTarget, dayTarget, bonus, BONUS_PER_POINT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGSchedule = api;
 })(typeof window !== 'undefined' ? window : globalThis);
