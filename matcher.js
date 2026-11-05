@@ -102,7 +102,13 @@
     u = u.replace(/[|‘’'"“”—–_~`]/g, ' ');
     u = u.replace(/HEAD\s*[\/I1L!]\s*BRAIN/g, 'HEAD BRAIN');
     u = u.replace(/\bCT\s*ANGIO(GRAM|GRAPHY)?\b/g, 'CTA');
+    // OCR often glues the contrast code onto the body part: "BRAINW WO", "SPINEWO", "VENOGRAMW".
+    u = u.replace(/\b(BRAIN|HEAD|NECK|FACE|ORBITS?|SINUS(?:ES)?|IACS?|PITUITARY|SPINE|CHEST|ABDOMEN|ABD|PELVIS|EXTREMITY|JOINT|KNEE|SHOULDER|HIP|ANKLE|WRIST|ELBOW|VENOGRAM|ANGIOGRAM)(W\s*\/?\s*O|W)(?=[\s\/&+]|$)/g, '$1 $2');
     u = u.replace(/\bW\s*\/?\s*(AND|&|\+)\s*W\s*\/?\s*O\b|\bWITH\s*(AND|&)\s*WITHOUT\b/g, ' WWO ');
+    // "W WO", "W/WO", "W/W/O"
+    u = u.replace(/\bW\s*\/?\s*W\s*\/?\s*O\b/g, ' WWO ');
+    // Reversed order: "WO W", "WO/W", "W/O & W/", "WITHOUT AND WITH"
+    u = u.replace(/\bW\s*\/?\s*O\s*(?:AND|&|\+|\/)?\s*W\b\s*\/?|\bWITHOUT\s*(?:AND|&)\s*WITH\b/g, ' WWO ');
     u = u.replace(/\bW\s*\/\s*O\b|\bWITHOUT\b/g, ' WO ');
     u = u.replace(/\bWO\s*\(?\s*C[O0]N(TRAST)?\b/g, ' WO ');
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
