@@ -1,11 +1,12 @@
 // DIG Ledger offline support.
 // App files are cached on install; the text-reading engine and fonts are cached the first time they load.
-const VERSION = 'dig-ledger-v5';
+const VERSION = 'dig-ledger-v6';
 const APP_FILES = [
   './',
   './index.html',
   './matcher.js',
   './schedule.js',
+  './schedule.csv',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',

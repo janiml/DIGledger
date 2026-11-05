@@ -590,6 +590,43 @@ onKey($('exportDay'), () => { if(!dayRows(current).length) return toast('Nothing
 onKey($('exportAll'), () => { const ds = Object.keys(state.days).filter(k => dayRows(k).length).sort(); if(!ds.length) return toast('Nothing logged yet.'); shareFile('dig-ledger-all.csv', toCsv(ds), 'text/csv'); });
 
 // ---------- settings ----------
+// Merge a parsed schedule into what's stored. A newer export replaces the dates it covers and keeps everything else.
+function mergeSchedule(p){
+  const old = state.schedule, all = old ? old.all : {};
+  const covered = new Set(p.dates);
+  for(const n in all) for(const d in all[n]) if(covered.has(d)) delete all[n][d];
+  for(const n in p.byName){ all[n] = Object.assign(all[n] || {}, p.byName[n]); }
+  const allDates = [...new Set([...(old ? Object.keys(old.span || {}) : []), ...p.dates])].sort();
+  const span = {}; allDates.forEach(d => span[d] = 1);
+  const names = Object.keys(all).filter(n => Object.keys(all[n]).length).sort();
+  const name = old && names.includes(old.name) ? old.name : null;
+  state.schedule = Object.assign({}, old, { all, names, span, from: allDates[0], to: allDates[allDates.length-1], name, days: name ? all[name] : {} });
+  save();
+}
+
+// The group schedule published with the app (schedule.csv next to index.html).
+async function loadSharedSchedule(){
+  let text;
+  try{ const res = await fetch('schedule.csv', { cache: 'no-cache' }); if(!res.ok) return; text = await res.text(); }catch(e){ return; }
+  let sig = text.length + ':'; for(let i = 0, h = 0; i < text.length; i++){ h = (h * 31 + text.charCodeAt(i)) | 0; if(i === text.length - 1) sig += h; }
+  if(!state.schedule || state.schedule.sharedSig !== sig){
+    let p; try{ p = S.parseSchedule(text); }catch(e){ return; }
+    mergeSchedule(p); state.schedule.sharedSig = sig; save(); render();
+  }
+  if(state.schedule && !state.schedule.name && $('sheet').hidden) askName();
+}
+
+function askName(){
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3>Who are you on the schedule?</h3><div class="sub">Pick your name once to see each day\'s point target and your bonus. You can change it later in Settings.</div><label class="field"><span>Your name</span><select id="askWho"></select></label><div class="sheet-actions"><button class="btn btn-quiet" id="askLater">Not now</button><button class="btn btn-primary" id="askOk" disabled>Save</button></div>';
+  const sel = sheet.querySelector('#askWho'), ok = sheet.querySelector('#askOk');
+  sel.append(new Option('Pick your name…', ''));
+  state.schedule.names.forEach(n => sel.append(new Option(n, n)));
+  sel.onchange = () => { ok.disabled = !sel.value; };
+  sheet.querySelector('#askLater').onclick = closeSheet;
+  ok.onclick = () => { state.schedule.name = sel.value; state.schedule.days = state.schedule.all[sel.value] || {}; save(); closeSheet(); render(); toast('Showing targets for ' + sel.value); };
+}
+
 function setupSchedule(sheet){
   const status = sheet.querySelector('#schedStatus'), whoField = sheet.querySelector('#schedWhoField'), who = sheet.querySelector('#schedWho');
   const tg = sheet.querySelector('#tg'), file = sheet.querySelector('#schedFile'), clear = sheet.querySelector('#schedClear');
@@ -619,16 +656,8 @@ function setupSchedule(sheet){
   file.onchange = async () => {
     const f = file.files[0]; file.value = ''; if(!f) return;
     let p; try{ p = S.parseSchedule(await f.text()); }catch(e){ toast(e.message || 'Could not read that schedule file.'); return; }
-    const old = state.schedule, all = old ? old.all : {};
-    // A newer export replaces the dates it covers and keeps everything else.
-    const covered = new Set(p.dates);
-    for(const n in all) for(const d in all[n]) if(covered.has(d)) delete all[n][d];
-    for(const n in p.byName){ all[n] = Object.assign(all[n] || {}, p.byName[n]); }
-    const allDates = [...new Set([...(old ? Object.keys(old.span || {}) : []), ...p.dates])].sort();
-    const span = {}; allDates.forEach(d => span[d] = 1);
-    const names = Object.keys(all).filter(n => Object.keys(all[n]).length).sort();
-    const name = old && names.includes(old.name) ? old.name : null;
-    state.schedule = { all, names, span, from: allDates[0], to: allDates[allDates.length-1], name, days: name ? all[name] : {} };
+    mergeSchedule(p);
+    const name = state.schedule.name;
     save(); draw(); render();
     if(!name){ toast('Schedule loaded. Pick your name.'); who.value = ''; who.focus(); }
     else toast('Schedule updated through ' + prettyDay(state.schedule.to));
@@ -638,7 +667,7 @@ function setupSchedule(sheet){
 
 $('settingsBtn').onclick = () => {
   const sheet = openSheet();
-  sheet.innerHTML = '<h3>Schedule and targets</h3><div class="sub">Load the schedule CSV from Lightning Bolt to see each day\'s target and your $' + S.BONUS_PER_POINT + '-per-point bonus. Load a new export whenever the schedule changes.</div><div class="sched-status" id="schedStatus"></div><label class="field" id="schedWhoField" hidden><span>Your name on the schedule</span><select id="schedWho"></select></label><div class="list ptable" id="tg"></div><div class="links"><button id="schedLoad">Load schedule CSV</button><button id="schedClear" hidden>Remove schedule</button><input type="file" id="schedFile" accept=".csv,text/csv,text/comma-separated-values,text/plain" hidden></div><h3>Point values</h3><div class="sub">Changes apply to exams you add from now on.</div><div class="list ptable" id="pt"></div><div class="links"><button id="resetPts">Reset to chart</button><button id="forget">Forget picks for unlisted exams</button></div><h3>Backup</h3><div class="sub">Your log lives on this phone only. Save a backup file now and then.</div><div class="links"><button id="backup">Save backup</button><button id="restore">Restore from backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-primary" id="done">Done</button></div>';
+  sheet.innerHTML = '<h3>Schedule and targets</h3><div class="sub">The group schedule loads with the app. Pick your name to see each day\'s target and your $' + S.BONUS_PER_POINT + '-per-point bonus. You can also load a schedule CSV yourself.</div><div class="sched-status" id="schedStatus"></div><label class="field" id="schedWhoField" hidden><span>Your name on the schedule</span><select id="schedWho"></select></label><div class="list ptable" id="tg"></div><div class="links"><button id="schedLoad">Load schedule CSV</button><button id="schedClear" hidden>Remove schedule</button><input type="file" id="schedFile" accept=".csv,text/csv,text/comma-separated-values,text/plain" hidden></div><h3>Point values</h3><div class="sub">Changes apply to exams you add from now on.</div><div class="list ptable" id="pt"></div><div class="links"><button id="resetPts">Reset to chart</button><button id="forget">Forget picks for unlisted exams</button></div><h3>Backup</h3><div class="sub">Your log lives on this phone only. Save a backup file now and then.</div><div class="links"><button id="backup">Save backup</button><button id="restore">Restore from backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-primary" id="done">Done</button></div>';
   setupSchedule(sheet);
   const pt = sheet.querySelector('#pt');
   Object.keys(M.DEFAULT_POINTS).sort((a,b)=>pointsFor(a)-pointsFor(b)).forEach(k => {
@@ -680,6 +709,7 @@ if(!standalone){
 if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 render();
+loadSharedSchedule();
 })();
 </script>
 </body>
