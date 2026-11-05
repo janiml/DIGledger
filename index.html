@@ -311,6 +311,16 @@ function render(){
   });
 }
 
+// Choice for a linked diagnostic mammogram / breast ultrasound whose side isn't on the list.
+function linkSelect(r){
+  const s = document.createElement('select');
+  const opts = [['', 'Pick…', null], ['us_breast_linked_uni', 'US 1 side · ' + pointsFor('us_breast_linked_uni'), 'us_breast_linked_uni'], ['us_breast_linked_bi', 'US both · ' + pointsFor('us_breast_linked_bi'), 'us_breast_linked_bi'], ['mammo_diagnostic', 'No US · ' + pointsFor('mammo_diagnostic'), 'mammo_diagnostic']];
+  opts.forEach(([v, label]) => s.append(new Option(label, v)));
+  s.value = r.points == null ? '' : r.key;
+  s.addEventListener('change', () => { if(s.value){ r.key = s.value; r.points = pointsFor(s.value); } else r.points = null; s.dispatchEvent(new CustomEvent('redraw', { bubbles: true })); });
+  return s;
+}
+
 function pointSelect(value, allowAsk){
   const s = document.createElement('select');
   if(allowAsk){ const o = new Option('Pick…',''); s.append(o); s.append(new Option('Skip','skip')); }
@@ -402,6 +412,29 @@ async function getWorker(onStatus){
 }
 let currentProgress = null;
 
+// Words with their boxes, from whichever shape the text reader returns.
+function wordsOf(data){
+  if(data && Array.isArray(data.words) && data.words.length) return data.words;
+  const out = [];
+  (data && data.blocks || []).forEach(b => (b.paragraphs||[]).forEach(p => (p.lines||[]).forEach(l => (l.words||[]).forEach(w => out.push(w)))));
+  return out;
+}
+// Accession numbers with a blue box just to their right (the linked-exam icon).
+function linkedAccessions(data, canvas){
+  const found = new Set(), mask = canvas.blueMask; if(!mask) return found;
+  const W = canvas.width, H = canvas.height;
+  wordsOf(data).forEach(wd => {
+    const m = String(wd.text||'').toUpperCase().match(M.ACCESSION); if(!m || !wd.bbox) return;
+    const { x0, y0, x1, y1 } = wd.bbox, hgt = Math.max(8, y1 - y0);
+    const ax = Math.max(0, x1), bx = Math.min(W, x1 + Math.round(2.5*hgt));
+    const ay = Math.max(0, y0 - Math.round(.3*hgt)), by = Math.min(H, y1 + Math.round(.3*hgt));
+    let n = 0, c = 0;
+    for(let y = ay; y < by; y++) for(let x = ax; x < bx; x++){ n++; c += mask[y*W + x]; }
+    if(n && c / n > 0.08) found.add(M.accessionKey(M.cleanAccession(m[0])));
+  });
+  return found;
+}
+
 function prepareImage(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -415,6 +448,10 @@ function prepareImage(file){
       g.drawImage(img, 0, 0, w, h);
       // Grayscale with a mild contrast lift — helps with photos taken of a monitor.
       const d = g.getImageData(0,0,w,h), p = d.data;
+      // Remember where the blue linked-exam boxes are before the color goes away.
+      const blue = new Uint8Array(w*h);
+      for(let i=0,j=0;i<p.length;i+=4,j++){ const r=p[i], gg=p[i+1], b=p[i+2]; if(b - r > 40 && b > gg) blue[j] = 1; }
+      c.blueMask = blue;
       for(let i=0;i<p.length;i+=4){
         let v = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
         v = (v-128)*1.25 + 128; v = v<0?0:v>255?255:v;
@@ -458,9 +495,11 @@ async function runScan(files){
       st.textContent = 'preparing'; bar.style.width = '8%';
       const canvas = await prepareImage(files[i]);
       currentProgress = (m) => { if(m.status === 'recognizing text'){ bar.style.width = Math.max(10, Math.round(m.progress*100)) + '%'; st.textContent = Math.round(m.progress*100) + '%'; } };
-      const { data } = await w.recognize(canvas);
+      const { data } = await w.recognize(canvas, {}, { text: true, blocks: true });
       currentProgress = null;
       const parsed = M.parseWorklist(data.text || '');
+      const linked = linkedAccessions(data, canvas);
+      parsed.rows.forEach(x => { x.linked = linked.has(M.accessionKey(x.accession)); });
       bar.style.width = '100%';
       if(!parsed.rows.length){
         r.classList.add('bad'); st.textContent = 'no rows';
@@ -494,9 +533,16 @@ function showReview(found, dates){
     let points = null, key = c.key || null;
     if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
     else if(c.key) points = pointsFor(c.key);
+    // Blue box: a breast ultrasound linked with its diagnostic mammogram.
+    let linkAsk = false;
+    if(f.linked){
+      const lk = M.linkedKey(f.exam);
+      if(lk === 'ask'){ linkAsk = true; points = null; key = 'mammo_diagnostic'; c = { key }; }
+      else if(lk){ key = lk; points = pointsFor(lk); c = { key }; }
+    }
     const late = f.ageDays != null && f.ageDays >= M.LATE_DAYS;
     const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
-    rows.push({ day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
+    rows.push({ linked: !!f.linked, linkAsk, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
   }
 
   let workDate = current;
@@ -550,11 +596,13 @@ function showReview(found, dates){
       meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
       t.append(ex, meta);
       if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
-      const sel = pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
+      if(r.linkAsk && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = 'Linked ultrasound: one side or both?'; t.append(why); }
+      else if(r.linked && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.style.color = 'var(--teal)'; why.textContent = 'Linked exam (blue box)'; t.append(why); }
+      const sel = r.linkAsk ? linkSelect(r) : pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
       sel.setAttribute('aria-label','Points for '+r.exam);
       if(r.skip) sel.value = 'skip';
       sel.disabled = isDup;
-      sel.onchange = () => {
+      if(!r.linkAsk) sel.onchange = () => {
         if(sel.value === 'skip'){ r.skip = true; r.points = null; }
         else { r.skip = false; r.points = sel.value===''?null:Number(sel.value); }
         draw();
@@ -574,6 +622,7 @@ function showReview(found, dates){
     add.textContent = open ? 'Pick points for ' + open + ' more ↓' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
   }
   revDate.onchange = () => { dayPicked = true; draw(); };
+  list.addEventListener('redraw', () => draw());
   add.onclick = () => {
     const need = list.querySelector('.item.need');
     if(need){

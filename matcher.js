@@ -20,6 +20,8 @@
     ct_head: [2, 'CT Head'],
     us_body: [2, 'US Body'],
     us_breast: [2, 'US Breast'],
+    us_breast_linked_uni: [12, 'US Breast one side + linked diag mammo'],
+    us_breast_linked_bi: [14, 'US Breast both sides + linked diag mammo'],
     nm_general: [2, 'Nuc Med'],
     ct_calcium: [2, 'CT Cardiac calcium score'],
 
@@ -271,20 +273,47 @@
   function daysBetween(a, b) { const t = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((t(b) - t(a)) / 86400000); }
 
   function isoDate(m) {
-    return m[3] + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
+    let mo = String(m[1]); if (mo.length === 2 && Number(mo) > 12 && /[47]/.test(mo[0])) mo = '1' + mo[1];
+    return m[3] + '-' + mo.padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
   }
 
   // Parse OCR text of a worklist screenshot into exam rows.
   // Returns {rows:[{exam, accession, examDate, signedDate, ageDays}], workDate}
+  // OCR sometimes drops the spaces in an exam name ("CTANGIOHEADANDNECK"). Split long glued words
+  // back into known worklist words; leave the word alone if it doesn't split cleanly.
+  const VOCAB = ['ABDOMEN','ANGIOGRAM','ANGIO','AND','ANKLE','AORTA','BILAT','BIOPSY','BRAIN','BREAST','CERVICAL','CHEST','COMPLETE','CON','CONTRAST','CTA','CT','DIAGNOSTIC','ELBOW','EXTREMITY','HEAD','HIP','KNEE','LEFT','LIMITED','LOWER','LUMBAR','MAMMO','MRA','MRI','MR','NECK','ORBITS','PELVIS','PE','RIGHT','SCREENING','SHOULDER','SINUS','SPINE','STONE','THORACIC','TOMO','UPPER','US','VENOGRAM','WITHOUT','WITH','WO','WRIST','W','BI'];
+  function unglue(word) {
+    if (word.length < 10 || !/^[A-Z]+$/.test(word)) return word;
+    const memo = {};
+    const go = (i) => {
+      if (i === word.length) return [];
+      if (i in memo) return memo[i];
+      for (const v of VOCAB) if (word.startsWith(v, i)) { const rest = go(i + v.length); if (rest) return memo[i] = [v, ...rest]; }
+      return memo[i] = null;
+    };
+    const parts = go(0);
+    return parts ? parts.join(' ') : word;
+  }
+
+  function stampsIn(s) {
+    return [...String(s).matchAll(DATE_TIME)].map(m => ({ d: isoDate(m), t: clock(m[4], m[5], m[6]) })).filter(x => validIso(x.d))
+      .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.t ?? -1) - (b.t ?? -1));
+  }
+
   function parseWorklist(text) {
     const lines = String(text || '').split(/\r?\n/);
     const rows = [];
+    // The list's Start/End Date filter sits above the first row. When both are the same day,
+    // that is the day everything on the list was signed.
+    const firstRow = lines.findIndex(l => ACCESSION.test(l.toUpperCase()));
+    const headDates = stampsIn(lines.slice(0, firstRow < 0 ? lines.length : firstRow).join('\n')).map(s => s.d);
+    const listDate = headDates.length && headDates.every(d => d === headDates[0]) ? headDates[0] : null;
     const dateCounts = {};
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const acc = line.toUpperCase().match(ACCESSION);
       if (!acc) continue;
-      const before = line.slice(0, acc.index).toUpperCase();
+      const before = line.slice(0, acc.index).toUpperCase().replace(/[A-Z]{10,}/g, unglue);
       // Patient names come first ("LAST, FIRST"); the exam starts at the first modality word after the comma.
       const commaAt = before.indexOf(',');
       const searchFrom = commaAt >= 0 ? commaAt + 1 : 0;
@@ -296,22 +325,25 @@
       const next = (lines[i + 1] || '').toUpperCase();
       const cont = next.match(/^\W*(?:[A-Z]\W{0,3})?\s*(CON|CONTRAST|W\/O CON|WO CON)\b/);
       if (cont && /\b(WO|W|W\/O)$/.test(exam)) exam += ' CON';
-      const after = line.slice(acc.index + acc[0].length);
-      // A row carries the exam date and the dictated date. The earlier one is the exam date,
-      // the later one is when it was read; their gap is how long the exam waited.
-      // Each date may carry a time ("11/04/2026 00:42" or "11/04/2026 12:42 AM").
-      const stamps = [...after.matchAll(DATE_TIME)].map(m => ({ d: isoDate(m), t: clock(m[4], m[5], m[6]) })).filter(s => validIso(s.d))
-        .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.t ?? -1) - (b.t ?? -1));
-      const ds = stamps.map(s => s.d);
-      const examDate = ds.length ? ds[0] : null;
-      const signedDate = ds.length ? ds[ds.length - 1] : null;
-      const signedTime = stamps.length ? stamps[stamps.length - 1].t : null;
-      const ageDays = ds.length > 1 ? daysBetween(examDate, signedDate) : null;
+      // Dates for this row: on the same line after the accession, or on the line below it
+      // (the worklist shows the exam date and time under the accession number).
+      let stamps = stampsIn(line.slice(acc.index + acc[0].length));
+      if (!stamps.length && lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase())) stamps = stampsIn(lines[i + 1]);
+      let examDate = null, signedDate = null, signedTime = null;
+      if (stamps.length > 1) {
+        // Both dates on the row: the earlier is the exam, the later is when it was signed.
+        examDate = stamps[0].d; signedDate = stamps[stamps.length - 1].d; signedTime = stamps[stamps.length - 1].t;
+      } else if (stamps.length === 1) {
+        // One date on the row is the exam date; the list's date filter is the day it was signed.
+        examDate = stamps[0].d;
+        signedDate = listDate && listDate >= examDate ? listDate : examDate;
+      } else signedDate = listDate;
+      const ageDays = examDate && signedDate ? daysBetween(examDate, signedDate) : null;
       if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
       rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays });
     }
-    let workDate = null, best = 0;
-    for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
+    let workDate = listDate, best = 0;
+    if (!workDate) for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
     if (!workDate) {
       const any = String(text || '').match(DATE);
       if (any) workDate = isoDate(any);
@@ -327,7 +359,23 @@
 
   const LATE_DAYS = 3, LATE_BONUS = 1, HARDWARE_BONUS = 2;
   const SPINE_CT_KEYS = ['ct_spine', 'ct_spine_wwo'];
-  const api = { LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
+  // A breast ultrasound with the blue linked-exam box carries its diagnostic mammogram:
+  // one side 12 points, both sides 14. Biopsies and other linked exams are left as they are.
+  function linkedKey(exam) {
+    const u = normalize(exam);
+    if (/BIOP|ASPIR|\bFNA\b|LOC\s*WIRE|WIRE\s*LOC|LOCALIZ|STEREO/.test(u)) return null;
+    const usBreast = /\bUS\b|ULTRASOUND|SONO/.test(u) && /BREAST/.test(u);
+    if (usBreast) {
+      if (/BILAT|BOTH|\bB\/?L\b|\bBI\b/.test(u)) return 'us_breast_linked_bi';
+      if (/LEFT|RIGHT|\bLT\b|\bRT\b/.test(u)) return 'us_breast_linked_uni';
+      return 'ask';
+    }
+    // A diagnostic mammogram with the box: the linked ultrasound isn't on the list, so ask its side.
+    if (classify(exam).key === 'mammo_diagnostic') return 'ask';
+    return null;
+  }
+
+  const api = { ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGMatcher = api;
 })(typeof window !== 'undefined' ? window : globalThis);
