@@ -66,6 +66,9 @@ button{cursor:pointer}
 .pts.hit{background:#dcf2ea;color:#16684f}
 @media (prefers-color-scheme:dark){.pts.hit{background:#163a2f;color:#6fdcbb}}
 .sched-status{font-size:13.5px}
+.hw-chips{display:flex;flex-wrap:wrap;gap:10px}
+.hw-chip{min-width:56px;height:56px;border-radius:12px;border:1px solid var(--line);background:var(--raised);font-family:var(--mono);font-size:20px;font-weight:600}
+.hw-chip.on{border-color:var(--teal);background:var(--teal-wash);color:var(--teal-ink)}
 
 .wrap{padding:18px max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px}
 .actions{display:grid;grid-template-columns:1fr auto;gap:10px}
@@ -197,8 +200,8 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- storage ----------
 function load(){
-  try{ const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s && s.days) return Object.assign({points:{},learned:{},targets:{},schedule:null}, s); }catch(e){}
-  return {days:{}, points:{}, learned:{}, targets:{}, schedule:null};
+  try{ const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s && s.days) return Object.assign({points:{},learned:{},targets:{},schedule:null,hardware:{}}, s); }catch(e){}
+  return {days:{}, points:{}, learned:{}, targets:{}, schedule:null, hardware:{}};
 }
 let state = load();
 function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){ toast('Could not save on this device. Free some storage and try again.'); } }
@@ -221,7 +224,12 @@ function prettyDay(s){
   return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric', year: d.getFullYear()===new Date().getFullYear()?undefined:'numeric'});
 }
 const dayRows = (d) => state.days[d] || [];
-const dayTotal = (d) => dayRows(d).reduce((s,r)=>s+(r.points||0),0);
+// An exam's points plus its late bonus (exam waited LATE_DAYS+ days before it was read).
+const entryPts = (r) => (r.points||0) + (r.late ? M.LATE_BONUS : 0);
+const isSpineCt = (r) => M.SPINE_CT_KEYS.includes(r.key);
+const spineCount = (d) => dayRows(d).filter(isSpineCt).length;
+const hardwareOn = (d) => Math.min(state.hardware[d] || 0, spineCount(d));
+const dayTotal = (d) => dayRows(d).reduce((s,r)=>s+entryPts(r),0) + hardwareOn(d) * M.HARDWARE_BONUS;
 // ---------- schedule targets ----------
 const shiftsOn = (d) => (state.schedule && state.schedule.days[d]) || [];
 const targetOn = (d) => S.dayTarget(shiftsOn(d), state.targets);
@@ -257,7 +265,7 @@ function render(){
     const t = document.createElement('div'); t.className = 't';
     const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam || labelFor(r.key);
     const meta = document.createElement('div'); meta.className = 'meta';
-    meta.textContent = labelFor(r.key) + (r.accession ? ' · ' + r.accession : '') + (r.source==='manual' ? ' · by hand' : '');
+    meta.textContent = labelFor(r.key) + (r.accession ? ' · ' + r.accession : '') + (r.source==='manual' ? ' · by hand' : '') + (r.late ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
     t.append(ex, meta);
     const sel = pointSelect(r.points, false);
     sel.className = 'ptsel'; sel.setAttribute('aria-label','Points for '+(r.exam||'exam'));
@@ -269,6 +277,20 @@ function render(){
     };
     el.append(t, sel, x); box.append(el);
   });
+
+  if(spineCount(current)){
+    const el = document.createElement('div'); el.className = 'item'; el.style.gridTemplateColumns = '1fr auto';
+    const t = document.createElement('div'); t.className = 't';
+    const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = 'Spine CTs with hardware';
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = hardwareOn(current) + ' of ' + spineCount(current) + ' · +' + M.HARDWARE_BONUS + ' each = +' + hardwareOn(current) * M.HARDWARE_BONUS + ' pts';
+    t.append(ex, meta);
+    const sel = document.createElement('select'); sel.className = 'ptsel'; sel.setAttribute('aria-label','Spine CTs with hardware');
+    for(let i = 0; i <= spineCount(current); i++) sel.append(new Option(String(i), String(i)));
+    sel.value = String(hardwareOn(current));
+    sel.onchange = () => { const v = Number(sel.value); if(v) state.hardware[current] = v; else delete state.hardware[current]; save(); render(); };
+    el.append(t, sel); box.append(el);
+  }
 
   const hist = $('history'); hist.textContent = '';
   const days = Object.keys(state.days).filter(k => dayRows(k).length).sort().reverse().slice(0,30);
@@ -320,6 +342,22 @@ function renderGoal(){
   if(pts >= tg.target){ g.classList.add('hit'); s1.textContent = b.over ? '+' + b.over + ' over · ' + money(b.dollars) : 'Target reached'; s2.textContent = money(S.BONUS_PER_POINT) + ' per point over'; }
   else { s1.textContent = (tg.target - pts) + ' to go'; s2.textContent = money(0) + ' bonus so far'; }
   st.append(s1, s2); g.append(bar, st);
+}
+
+// Hardware isn't visible on the worklist, so ask after spine CTs are added.
+function askHardware(day, n, pts){
+  const total = spineCount(day), cur = hardwareOn(day);
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3></h3><div class="sub"></div><div class="hw-chips" role="group" aria-label="Spine CTs with hardware"></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-quiet" id="hwSkip">Decide later</button></div>';
+  sheet.querySelector('h3').textContent = 'You read ' + total + ' spine CT' + (total===1?'':'s') + ' ' + (['Today','Yesterday'].includes(prettyDay(day)) ? prettyDay(day).toLowerCase() : 'on ' + prettyDay(day)) + '. How many had hardware?';
+  sheet.querySelector('.sub').textContent = 'Each one with hardware adds ' + M.HARDWARE_BONUS + ' points. Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts.';
+  const chips = sheet.querySelector('.hw-chips');
+  for(let i = 0; i <= total; i++){
+    const b = document.createElement('button'); b.className = 'hw-chip' + (i===cur?' on':''); b.textContent = i;
+    b.onclick = () => { if(i) state.hardware[day] = i; else delete state.hardware[day]; save(); closeSheet(); render(); toast(i ? i + ' with hardware · +' + i * M.HARDWARE_BONUS + ' pts' : 'No hardware'); };
+    chips.append(b);
+  }
+  sheet.querySelector('#hwSkip').onclick = () => { closeSheet(); toast('You can set it under the day\'s exams'); };
 }
 
 // ---------- day nav ----------
@@ -457,7 +495,8 @@ function showReview(found, dates){
     let points = null, key = c.key || null;
     if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
     else if(c.key) points = pointsFor(c.key);
-    rows.push({ exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true });
+    const late = f.ageDays != null && f.ageDays >= M.LATE_DAYS;
+    rows.push({ exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
   }
 
   const keep = sheet.querySelector('#prog') ? sheet.querySelector('#prog').outerHTML : '';
@@ -499,7 +538,7 @@ function showReview(found, dates){
       const t = document.createElement('div'); t.className = 't';
       const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam;
       const meta = document.createElement('div'); meta.className = 'meta';
-      meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession;
+      meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
       t.append(ex, meta);
       if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
       const sel = pointSelect(r.points, !!r.ask); sel.className = 'ptsel';
@@ -514,7 +553,7 @@ function showReview(found, dates){
       const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label','Leave out');
       x.onclick = () => { rows.splice(rows.indexOf(r),1); draw(); };
       el.append(t, sel, x); list.append(el);
-      if(!isDup && !r.skip){ if(r.points==null){ open++; el.classList.add('need'); } else { n++; pts += r.points; } }
+      if(!isDup && !r.skip){ if(r.points==null){ open++; el.classList.add('need'); } else { n++; pts += r.points + (r.late ? M.LATE_BONUS : 0); } }
     });
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
@@ -533,15 +572,18 @@ function showReview(found, dates){
     }
     const day = revDate.value || current; const have = existingKeys();
     const target = state.days[day] = state.days[day] || [];
-    let n = 0, pts = 0;
+    let n = 0, pts = 0, newSpine = 0;
     rows.forEach(r => {
       if(have.has(r.akey) || r.skip || r.points==null) return;
       if(r.ask) state.learned[r.norm] = r.points;
-      target.push({ exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() });
-      n++; pts += r.points;
+      const entry = { exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() };
+      if(r.late){ entry.late = true; entry.ageDays = r.ageDays; }
+      target.push(entry);
+      n++; pts += entryPts(entry); if(isSpineCt(entry)) newSpine++;
     });
     save(); current = day; closeSheet(); render();
-    toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts');
+    if(newSpine) askHardware(day, n, pts);
+    else toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts');
   };
   draw();
 }
@@ -573,7 +615,10 @@ $('manualBtn').onclick = () => {
 const csvCell = (v) => { const s = String(v==null?'':v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
 function toCsv(days){
   const out = [['date','accession','exam','category','points','source'].join(',')];
-  days.forEach(d => dayRows(d).forEach(r => out.push([d, r.accession, r.exam, labelFor(r.key), r.points, r.source].map(csvCell).join(','))));
+  days.forEach(d => {
+    dayRows(d).forEach(r => out.push([d, r.accession, r.exam, labelFor(r.key) + (r.late ? ' + late' : ''), entryPts(r), r.source].map(csvCell).join(',')));
+    if(hardwareOn(d)) out.push([d, '', 'Spine CT hardware x' + hardwareOn(d), 'Hardware', hardwareOn(d) * M.HARDWARE_BONUS, 'manual'].map(csvCell).join(','));
+  });
   return out.join('\n') + '\n';
 }
 async function shareFile(name, text, type){
@@ -686,7 +731,7 @@ $('settingsBtn').onclick = () => {
     const f = rf.files[0]; if(!f) return;
     try{
       const s = JSON.parse(await f.text()); if(!s || typeof s.days !== 'object') throw 0;
-      state = Object.assign({points:{},learned:{},targets:{},schedule:null}, s); save(); closeSheet(); render(); toast('Backup restored');
+      state = Object.assign({points:{},learned:{},targets:{},schedule:null,hardware:{}}, s); save(); closeSheet(); render(); toast('Backup restored');
     }catch(e){ toast('That file is not a DIG Ledger backup.'); }
   };
   sheet.querySelector('#done').onclick = () => { closeSheet(); render(); };

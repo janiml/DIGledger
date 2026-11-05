@@ -259,12 +259,15 @@
     return 'A' + m[1].replace(/[^0-9]/g, '0') + m[2] + m[3];
   }
 
+  function validIso(s) { const [y, m, d] = s.split('-').map(Number); return m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 2000; }
+  function daysBetween(a, b) { const t = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((t(b) - t(a)) / 86400000); }
+
   function isoDate(m) {
     return m[3] + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
   }
 
   // Parse OCR text of a worklist screenshot into exam rows.
-  // Returns {rows:[{exam, accession, signedDate}], workDate}
+  // Returns {rows:[{exam, accession, examDate, signedDate, ageDays}], workDate}
   function parseWorklist(text) {
     const lines = String(text || '').split(/\r?\n/);
     const rows = [];
@@ -286,10 +289,14 @@
       const cont = next.match(/^\W*(?:[A-Z]\W{0,3})?\s*(CON|CONTRAST|W\/O CON|WO CON)\b/);
       if (cont && /\b(WO|W|W\/O)$/.test(exam)) exam += ' CON';
       const after = line.slice(acc.index + acc[0].length);
-      const dm = after.match(DATE);
-      const signedDate = dm ? isoDate(dm) : null;
+      // A row carries the exam date and the dictated date. The earlier one is the exam date,
+      // the later one is when it was read; their gap is how long the exam waited.
+      const ds = [...after.matchAll(new RegExp(DATE.source, 'g'))].map(isoDate).filter(validIso).sort();
+      const examDate = ds.length ? ds[0] : null;
+      const signedDate = ds.length ? ds[ds.length - 1] : null;
+      const ageDays = ds.length > 1 ? daysBetween(examDate, signedDate) : null;
       if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
-      rows.push({ exam, accession: cleanAccession(acc[0]), signedDate });
+      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, ageDays });
     }
     let workDate = null, best = 0;
     for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
@@ -306,7 +313,9 @@
     return m ? m[1].slice(-9) + m[2] : String(a || '').toUpperCase();
   }
 
-  const api = { DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
+  const LATE_DAYS = 3, LATE_BONUS = 1, HARDWARE_BONUS = 2;
+  const SPINE_CT_KEYS = ['ct_spine', 'ct_spine_wwo'];
+  const api = { LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGMatcher = api;
 })(typeof window !== 'undefined' ? window : globalThis);
