@@ -55,6 +55,17 @@ button{cursor:pointer}
 .total .num small{font-size:16px;color:var(--on-ink-muted);margin-left:6px;font-weight:400}
 .total .side{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--on-ink-muted);line-height:1.7}
 .total .side b{color:var(--on-ink);font-weight:600}
+.goal{margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--on-ink-muted)}
+.goal .g-row{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.goal .g-row b{color:var(--on-ink);font-weight:600}
+.goal .g-bar{height:6px;background:#22303c;border-radius:3px;overflow:hidden;margin-top:7px}
+.goal .g-bar i{display:block;height:100%;background:var(--on-ink-muted);border-radius:3px;transition:width .3s}
+.goal.hit .g-bar i{background:#4fc3a1}
+.goal .g-status{font-size:14px;font-weight:600;color:var(--on-ink)}
+.goal.hit .g-status{color:#6fdcbb}
+.pts.hit{background:#dcf2ea;color:#16684f}
+@media (prefers-color-scheme:dark){.pts.hit{background:#163a2f;color:#6fdcbb}}
+.sched-status{font-size:13.5px}
 
 .wrap{padding:18px max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px}
 .actions{display:grid;grid-template-columns:1fr auto;gap:10px}
@@ -139,6 +150,7 @@ h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:
       <div class="num mono" id="dayTotal">0<small>pts</small></div>
       <div class="side" id="daySide">0 exams<br>Week <b>0</b> · Month <b>0</b></div>
     </div>
+    <div class="goal" id="dayGoal" hidden></div>
   </div>
 </header>
 
@@ -173,18 +185,20 @@ h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:
 <div class="toast" id="toast" hidden></div>
 
 <script src="matcher.js"></script>
+<script src="schedule.js"></script>
 <script>
 (function(){
 'use strict';
 const M = window.DIGMatcher;
+const S = window.DIGSchedule;
 const STORE_KEY = 'digledger.v1';
 const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const $ = (id) => document.getElementById(id);
 
 // ---------- storage ----------
 function load(){
-  try{ const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s && s.days) return Object.assign({points:{},learned:{}}, s); }catch(e){}
-  return {days:{}, points:{}, learned:{}};
+  try{ const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s && s.days) return Object.assign({points:{},learned:{},targets:{},schedule:null}, s); }catch(e){}
+  return {days:{}, points:{}, learned:{}, targets:{}, schedule:null};
 }
 let state = load();
 function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){ toast('Could not save on this device. Free some storage and try again.'); } }
@@ -208,6 +222,11 @@ function prettyDay(s){
 }
 const dayRows = (d) => state.days[d] || [];
 const dayTotal = (d) => dayRows(d).reduce((s,r)=>s+(r.points||0),0);
+// ---------- schedule targets ----------
+const shiftsOn = (d) => (state.schedule && state.schedule.days[d]) || [];
+const targetOn = (d) => S.dayTarget(shiftsOn(d), state.targets);
+const titleCase = (s) => String(s).toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Lc|Nfr|Ir|Dic|Wd|We|Hol|Inv|Prg|Gnv|Vip|Weg)\b/g, (m) => m.toUpperCase());
+const money = (n) => '$' + n.toLocaleString();
 
 // ---------- render ----------
 function render(){
@@ -217,13 +236,17 @@ function render(){
   $('dayTotal').innerHTML = dayTotal(current) + '<small>pts</small>';
   const d = parseIso(current);
   const wkStart = new Date(d); wkStart.setDate(d.getDate() - ((d.getDay()+6)%7));
-  let wk = 0, mo = 0;
+  let wk = 0, mo = 0, moBonus = 0;
   for(const k in state.days){
     const kd = parseIso(k);
     if(kd >= wkStart && kd <= new Date(wkStart.getFullYear(),wkStart.getMonth(),wkStart.getDate()+6)) wk += dayTotal(k);
-    if(kd.getFullYear()===d.getFullYear() && kd.getMonth()===d.getMonth()) mo += dayTotal(k);
+    if(kd.getFullYear()===d.getFullYear() && kd.getMonth()===d.getMonth()){
+      mo += dayTotal(k);
+      const tg = targetOn(k); if(tg) moBonus += S.bonus(dayTotal(k), tg.target).dollars;
+    }
   }
-  $('daySide').innerHTML = rows.length + (rows.length===1?' exam':' exams') + '<br>Week <b>'+wk+'</b> · Month <b>'+mo+'</b>';
+  $('daySide').innerHTML = rows.length + (rows.length===1?' exam':' exams') + '<br>Week <b>'+wk+'</b> · Month <b>'+mo+'</b>' + (state.schedule ? '<br>Month bonus <b>'+money(moBonus)+'</b>' : '');
+  renderGoal();
 
   const box = $('items'); box.textContent = '';
   if(!rows.length){
@@ -255,8 +278,11 @@ function render(){
     el.tabIndex = 0;
     el.innerHTML = '<div class="t"><div class="ex"></div><div class="meta"></div></div><div class="pts"></div>';
     el.querySelector('.ex').textContent = prettyDay(k);
-    el.querySelector('.meta').textContent = dayRows(k).length + ' exams';
-    el.querySelector('.pts').textContent = dayTotal(k);
+    const tg = targetOn(k), tot = dayTotal(k);
+    let meta = dayRows(k).length + (dayRows(k).length===1?' exam':' exams');
+    if(tg){ const b = S.bonus(tot, tg.target); meta += ' · target ' + tg.target + (tot >= tg.target ? (b.over ? ' · +' + b.over + ' = ' + money(b.dollars) : ' · reached') : ' · ' + (tg.target - tot) + ' short'); if(tot >= tg.target) el.querySelector('.pts').classList.add('hit'); }
+    el.querySelector('.meta').textContent = meta;
+    el.querySelector('.pts').textContent = tot;
     el.onclick = () => { current = k; render(); window.scrollTo({top:0,behavior:'smooth'}); };
     hist.append(el);
   });
@@ -269,6 +295,31 @@ function pointSelect(value, allowAsk){
   steps.forEach(p => s.append(new Option(p + ' pt', String(p))));
   if(value!=null && value!=='') s.value = String(value);
   return s;
+}
+
+function renderGoal(){
+  const g = $('dayGoal'); g.textContent = ''; g.className = 'goal';
+  if(!state.schedule){ g.hidden = true; return; }
+  g.hidden = false;
+  const shifts = shiftsOn(current), tg = targetOn(current), pts = dayTotal(current);
+  const row = document.createElement('div'); row.className = 'g-row';
+  const left = document.createElement('span'), right = document.createElement('span');
+  row.append(left, right); g.append(row);
+  if(!tg){
+    left.textContent = shifts.length ? shifts.map(titleCase).join(' · ') : 'Not on the loaded schedule';
+    right.textContent = 'No target'; return;
+  }
+  left.innerHTML = ''; const a = document.createElement('b'); a.textContent = titleCase(tg.assignment); left.append(a);
+  right.innerHTML = 'Target <b>' + tg.target + '</b>';
+  const bar = document.createElement('div'); bar.className = 'g-bar';
+  const fill = document.createElement('i'); fill.style.width = (tg.target ? Math.min(100, pts / tg.target * 100) : 100) + '%'; bar.append(fill);
+  const st = document.createElement('div'); st.className = 'g-row'; st.style.marginTop = '7px';
+  const s1 = document.createElement('span'); s1.className = 'g-status';
+  const s2 = document.createElement('span');
+  const b = S.bonus(pts, tg.target);
+  if(pts >= tg.target){ g.classList.add('hit'); s1.textContent = b.over ? '+' + b.over + ' over · ' + money(b.dollars) : 'Target reached'; s2.textContent = money(S.BONUS_PER_POINT) + ' per point over'; }
+  else { s1.textContent = (tg.target - pts) + ' to go'; s2.textContent = money(0) + ' bonus so far'; }
+  st.append(s1, s2); g.append(bar, st);
 }
 
 // ---------- day nav ----------
@@ -539,9 +590,56 @@ onKey($('exportDay'), () => { if(!dayRows(current).length) return toast('Nothing
 onKey($('exportAll'), () => { const ds = Object.keys(state.days).filter(k => dayRows(k).length).sort(); if(!ds.length) return toast('Nothing logged yet.'); shareFile('dig-ledger-all.csv', toCsv(ds), 'text/csv'); });
 
 // ---------- settings ----------
+function setupSchedule(sheet){
+  const status = sheet.querySelector('#schedStatus'), whoField = sheet.querySelector('#schedWhoField'), who = sheet.querySelector('#schedWho');
+  const tg = sheet.querySelector('#tg'), file = sheet.querySelector('#schedFile'), clear = sheet.querySelector('#schedClear');
+  function draw(){
+    const sc = state.schedule; tg.textContent = ''; who.textContent = '';
+    whoField.hidden = clear.hidden = !sc;
+    if(!sc){ status.textContent = 'No schedule loaded yet.'; return; }
+    if(!sc.name) who.append(new Option('Pick your name…', ''));
+    sc.names.forEach(n => who.append(new Option(n, n))); who.value = sc.name || '';
+    const dates = Object.keys(sc.all[sc.name] || {}).sort();
+    status.textContent = 'Loaded ' + prettyDay(sc.from) + ' to ' + prettyDay(sc.to) + ' · ' + dates.length + ' days for ' + (sc.name || 'nobody yet');
+    const seen = new Map();
+    dates.forEach(d => sc.all[sc.name][d].forEach(a => { if(S.defaultTarget(a) != null) seen.set(a, (seen.get(a)||0) + 1); }));
+    [...seen.keys()].sort((a,b) => S.defaultTarget(a) - S.defaultTarget(b) || a.localeCompare(b)).forEach(a => {
+      const el = document.createElement('label'); el.className = 'item';
+      const t = document.createElement('span'); t.className = 'ex'; t.textContent = titleCase(a) + ' (' + seen.get(a) + (seen.get(a)===1?' day':' days') + ')';
+      const inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.inputMode = 'numeric';
+      inp.value = a in state.targets ? state.targets[a] : S.defaultTarget(a);
+      inp.setAttribute('aria-label', 'Target for ' + a);
+      inp.onchange = () => { const v = Number(inp.value); if(inp.value === '' || v === S.defaultTarget(a)) delete state.targets[a]; else state.targets[a] = v; save(); render(); };
+      el.append(t, inp); tg.append(el);
+    });
+  }
+  who.onchange = () => { if(!who.value) return; state.schedule.name = who.value; state.schedule.days = state.schedule.all[who.value] || {}; save(); draw(); render(); };
+  sheet.querySelector('#schedLoad').onclick = () => file.click();
+  clear.onclick = () => { state.schedule = null; save(); draw(); render(); toast('Schedule removed'); };
+  file.onchange = async () => {
+    const f = file.files[0]; file.value = ''; if(!f) return;
+    let p; try{ p = S.parseSchedule(await f.text()); }catch(e){ toast(e.message || 'Could not read that schedule file.'); return; }
+    const old = state.schedule, all = old ? old.all : {};
+    // A newer export replaces the dates it covers and keeps everything else.
+    const covered = new Set(p.dates);
+    for(const n in all) for(const d in all[n]) if(covered.has(d)) delete all[n][d];
+    for(const n in p.byName){ all[n] = Object.assign(all[n] || {}, p.byName[n]); }
+    const allDates = [...new Set([...(old ? Object.keys(old.span || {}) : []), ...p.dates])].sort();
+    const span = {}; allDates.forEach(d => span[d] = 1);
+    const names = Object.keys(all).filter(n => Object.keys(all[n]).length).sort();
+    const name = old && names.includes(old.name) ? old.name : null;
+    state.schedule = { all, names, span, from: allDates[0], to: allDates[allDates.length-1], name, days: name ? all[name] : {} };
+    save(); draw(); render();
+    if(!name){ toast('Schedule loaded. Pick your name.'); who.value = ''; who.focus(); }
+    else toast('Schedule updated through ' + prettyDay(state.schedule.to));
+  };
+  draw();
+}
+
 $('settingsBtn').onclick = () => {
   const sheet = openSheet();
-  sheet.innerHTML = '<h3>Point values</h3><div class="sub">Changes apply to exams you add from now on.</div><div class="list ptable" id="pt"></div><div class="links"><button id="resetPts">Reset to chart</button><button id="forget">Forget picks for unlisted exams</button></div><h3>Backup</h3><div class="sub">Your log lives on this phone only. Save a backup file now and then.</div><div class="links"><button id="backup">Save backup</button><button id="restore">Restore from backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-primary" id="done">Done</button></div>';
+  sheet.innerHTML = '<h3>Schedule and targets</h3><div class="sub">Load the schedule CSV from Lightning Bolt to see each day\'s target and your $' + S.BONUS_PER_POINT + '-per-point bonus. Load a new export whenever the schedule changes.</div><div class="sched-status" id="schedStatus"></div><label class="field" id="schedWhoField" hidden><span>Your name on the schedule</span><select id="schedWho"></select></label><div class="list ptable" id="tg"></div><div class="links"><button id="schedLoad">Load schedule CSV</button><button id="schedClear" hidden>Remove schedule</button><input type="file" id="schedFile" accept=".csv,text/csv,text/comma-separated-values,text/plain" hidden></div><h3>Point values</h3><div class="sub">Changes apply to exams you add from now on.</div><div class="list ptable" id="pt"></div><div class="links"><button id="resetPts">Reset to chart</button><button id="forget">Forget picks for unlisted exams</button></div><h3>Backup</h3><div class="sub">Your log lives on this phone only. Save a backup file now and then.</div><div class="links"><button id="backup">Save backup</button><button id="restore">Restore from backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></div><div class="sheet-actions" style="grid-template-columns:1fr"><button class="btn btn-primary" id="done">Done</button></div>';
+  setupSchedule(sheet);
   const pt = sheet.querySelector('#pt');
   Object.keys(M.DEFAULT_POINTS).sort((a,b)=>pointsFor(a)-pointsFor(b)).forEach(k => {
     const el = document.createElement('label'); el.className = 'item';
@@ -559,7 +657,7 @@ $('settingsBtn').onclick = () => {
     const f = rf.files[0]; if(!f) return;
     try{
       const s = JSON.parse(await f.text()); if(!s || typeof s.days !== 'object') throw 0;
-      state = Object.assign({points:{},learned:{}}, s); save(); closeSheet(); render(); toast('Backup restored');
+      state = Object.assign({points:{},learned:{},targets:{},schedule:null}, s); save(); closeSheet(); render(); toast('Backup restored');
     }catch(e){ toast('That file is not a DIG Ledger backup.'); }
   };
   sheet.querySelector('#done').onclick = () => { closeSheet(); render(); };
