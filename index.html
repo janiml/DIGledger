@@ -91,8 +91,12 @@ h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:
 
 /* Sheet */
 .scrim{position:fixed;inset:0;background:rgba(8,12,16,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
-.sheet{background:var(--paper);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+.sheet{background:var(--paper);width:100%;max-width:640px;max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:18px 18px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+/* Children keep their full height so the sheet scrolls instead of squeezing (and clipping) the exam list. */
+.sheet>*{flex-shrink:0}
 .sheet h3{margin:0;font-size:18px}
+.item.need{box-shadow:inset 3px 0 0 var(--amber);background:var(--amber-wash)}
+.item.need .ptsel{border-color:var(--amber)}
 .sheet .sub{color:var(--muted);font-size:13.5px;margin-top:-10px}
 .prog{display:flex;flex-direction:column;gap:8px}
 .prow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:13.5px}
@@ -459,16 +463,23 @@ function showReview(found, dates){
       const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label','Leave out');
       x.onclick = () => { rows.splice(rows.indexOf(r),1); draw(); };
       el.append(t, sel, x); list.append(el);
-      if(!isDup && !r.skip){ if(r.points==null) open++; else { n++; pts += r.points; } }
+      if(!isDup && !r.skip){ if(r.points==null){ open++; el.classList.add('need'); } else { n++; pts += r.points; } }
     });
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
     dupNote.textContent = dups ? dups + ' already on ' + prettyDay(revDate.value) + ' and will be skipped.' : '';
-    add.disabled = open > 0 || n === 0;
-    add.textContent = open ? 'Pick points for ' + open + ' more' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
+    // While picks are missing the button stays tappable and jumps to the next exam that needs one.
+    add.disabled = !open && n === 0;
+    add.textContent = open ? 'Pick points for ' + open + ' more ↓' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
   }
   revDate.onchange = draw;
   add.onclick = () => {
+    const need = list.querySelector('.item.need');
+    if(need){
+      need.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const s = need.querySelector('select'); if(s) setTimeout(() => s.focus({ preventScroll: true }), 350);
+      return;
+    }
     const day = revDate.value || current; const have = existingKeys();
     const target = state.days[day] = state.days[day] || [];
     let n = 0, pts = 0;
