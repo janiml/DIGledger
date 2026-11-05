@@ -83,7 +83,54 @@
     return { over, dollars: over * BONUS_PER_POINT };
   }
 
-  const api = { parseCsv, parseSchedule, defaultTarget, dayTarget, bonus, BONUS_PER_POINT };
+  // Shift hours from the assignment name, e.g. "SHIFT 5-1" -> {start:17, end:25} (end past 24 = next morning).
+  // Starts of 6-11 are morning, 12 is noon, 1-5 afternoon; "MIDNIGHT" shifts start at night.
+  function shiftHours(assignment) {
+    const u = clean(assignment).toUpperCase();
+    const m = u.match(/(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?/);
+    if (!m) return null;
+    let s = Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+    const e0 = Number(m[3]) + (m[4] ? Number(m[4]) / 60 : 0);
+    if (/MIDNIGHT|NIGHT|NOC/.test(u)) { if (s < 12) s += 12; }
+    else if (s >= 1 && s < 6) s += 12;
+    let e = e0; while (e <= s) e += 12;
+    return { start: s, end: e };
+  }
+
+  function addDays(isoDay, n) { const [y, mo, d] = isoDay.split('-').map(Number); const t = new Date(Date.UTC(y, mo - 1, d + n)); return t.toISOString().slice(0, 10); }
+
+  // The reading shift on a day that has hours (ignores off days and extra duties).
+  function readingShift(assignments, overrides) {
+    let best = null;
+    for (const a of assignments || []) {
+      const t = overrides && clean(a) in overrides ? overrides[clean(a)] : defaultTarget(a);
+      if (t == null) continue;
+      // Assignments without hours in the name (e.g. DIC MAMMO) are daytime work.
+      const hrs = shiftHours(a) || { start: 8, end: 17 };
+      if (!best || hrs.end > best.end) best = Object.assign({ assignment: clean(a) }, hrs);
+    }
+    return best;
+  }
+
+  // Which day an exam counts toward. Work signed after midnight on an overnight shift counts
+  // toward the day the shift started. signedTime is minutes after midnight, or null if unknown.
+  function creditDay(signedDate, signedTime, days, overrides) {
+    if (!signedDate || !days) return signedDate;
+    const prev = addDays(signedDate, -1);
+    const night = readingShift(days[prev], overrides);
+    if (!night || night.end <= 24) return signedDate;
+    const endMin = (night.end - 24) * 60;
+    const today = readingShift(days[signedDate], overrides);
+    if (signedTime != null) {
+      // Signed by the end of the overnight shift (with an hour of slack, but never into today's own shift).
+      const cutoff = today ? Math.max(endMin, Math.min(endMin + 60, today.start * 60)) : endMin + 60;
+      return signedTime <= cutoff ? prev : signedDate;
+    }
+    // No time on the row: if there's no shift of its own that day, it belongs to last night.
+    return today ? signedDate : prev;
+  }
+
+  const api = { shiftHours, readingShift, creditDay, addDays, parseCsv, parseSchedule, defaultTarget, dayTarget, bonus, BONUS_PER_POINT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGSchedule = api;
 })(typeof window !== 'undefined' ? window : globalThis);

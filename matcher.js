@@ -252,6 +252,14 @@
   // Accession numbers look like A000002157426H; OCR often swaps 0 for O/Q/D.
   const ACCESSION = /\bA[0-9A-Z]{0,5}\d{6,}[A-Z]{0,3}\b/;
   const DATE = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/;
+  const DATE_TIME = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b(?:\s+(\d{1,2})[:.](\d{2})(?::\d{2})?(?:\s*([AaPp])\.?[Mm]?\b)?)?/g;
+  // Minutes after midnight, or null when no time was read.
+  function clock(h, m, ap) {
+    if (h == null) return null;
+    h = Number(h); m = Number(m);
+    if (ap) { ap = ap.toUpperCase(); if (ap === 'P' && h < 12) h += 12; if (ap === 'A' && h === 12) h = 0; }
+    return h < 24 && m < 60 ? h * 60 + m : null;
+  }
 
   function cleanAccession(a) {
     const m = String(a).toUpperCase().match(/^A([0-9A-Z]{0,5}?)(\d{6,})([A-Z]*)$/);
@@ -291,12 +299,16 @@
       const after = line.slice(acc.index + acc[0].length);
       // A row carries the exam date and the dictated date. The earlier one is the exam date,
       // the later one is when it was read; their gap is how long the exam waited.
-      const ds = [...after.matchAll(new RegExp(DATE.source, 'g'))].map(isoDate).filter(validIso).sort();
+      // Each date may carry a time ("11/04/2026 00:42" or "11/04/2026 12:42 AM").
+      const stamps = [...after.matchAll(DATE_TIME)].map(m => ({ d: isoDate(m), t: clock(m[4], m[5], m[6]) })).filter(s => validIso(s.d))
+        .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.t ?? -1) - (b.t ?? -1));
+      const ds = stamps.map(s => s.d);
       const examDate = ds.length ? ds[0] : null;
       const signedDate = ds.length ? ds[ds.length - 1] : null;
+      const signedTime = stamps.length ? stamps[stamps.length - 1].t : null;
       const ageDays = ds.length > 1 ? daysBetween(examDate, signedDate) : null;
       if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
-      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, ageDays });
+      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays });
     }
     let workDate = null, best = 0;
     for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }

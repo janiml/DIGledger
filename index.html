@@ -234,6 +234,7 @@ const dayTotal = (d) => dayRows(d).reduce((s,r)=>s+entryPts(r),0) + hardwareOn(d
 const shiftsOn = (d) => (state.schedule && state.schedule.days[d]) || [];
 const targetOn = (d) => S.dayTarget(shiftsOn(d), state.targets);
 const titleCase = (s) => String(s).toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Lc|Nfr|Ir|Dic|Wd|We|Hol|Inv|Prg|Gnv|Vip|Weg)\b/g, (m) => m.toUpperCase());
+const shiftLabel = (d) => { const s = state.schedule && S.readingShift(shiftsOn(d), state.targets); return s ? titleCase(s.assignment) : ''; };
 const money = (n) => '$' + n.toLocaleString();
 
 // ---------- render ----------
@@ -482,8 +483,6 @@ async function runScan(files){
 
 function showReview(found, dates){
   const sheet = $('sheetBody');
-  let workDate = current, best = 0;
-  for(const d in dates) if(dates[d] > best){ best = dates[d]; workDate = d; }
 
   // Collapse repeats across overlapping photos
   const seen = new Set(); const rows = [];
@@ -496,9 +495,18 @@ function showReview(found, dates){
     if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
     else if(c.key) points = pointsFor(c.key);
     const late = f.ageDays != null && f.ageDays >= M.LATE_DAYS;
-    rows.push({ exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
+    const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
+    rows.push({ day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
   }
 
+  let workDate = current;
+  { const counts = {}; let best = 0; rows.forEach(r => { if(r.day) counts[r.day] = (counts[r.day]||0) + 1; });
+    for(const d in counts) if(counts[d] > best){ best = counts[d]; workDate = d; }
+    if(!best){ for(const d in dates) if(dates[d] > best){ best = dates[d]; workDate = d; } } }
+  // Each exam goes to its own day (overnight work counts toward the night the shift started)
+  // unless the day below is changed by hand, which sends them all there.
+  let dayPicked = false;
+  const dayFor = (r) => dayPicked ? revDate.value : (r.day || revDate.value);
   const keep = sheet.querySelector('#prog') ? sheet.querySelector('#prog').outerHTML : '';
   sheet.innerHTML = '';
   const h = document.createElement('h3'); h.textContent = rows.length ? 'Check and add' : 'Nothing to add';
@@ -526,7 +534,8 @@ function showReview(found, dates){
   const add = document.createElement('button'); add.className = 'btn btn-primary';
   actions.append(cancel, add); sheet.append(actions);
 
-  function existingKeys(){ return new Set(dayRows(revDate.value).map(r => r.akey).filter(Boolean)); }
+  // Accession numbers already logged on any day, so an exam is never counted twice.
+  function existingKeys(){ const s = new Set(); for(const d in state.days) dayRows(d).forEach(r => { if(r.akey) s.add(r.akey); }); return s; }
 
   function draw(){
     const have = existingKeys();
@@ -557,12 +566,14 @@ function showReview(found, dates){
     });
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
-    dupNote.textContent = dups ? dups + ' already on ' + prettyDay(revDate.value) + ' and will be skipped.' : '';
+    const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!have.has(r.akey) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
+    const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam':' exams') + ' signed after midnight count toward ' + prettyDay(d) + (shiftLabel(d) ? '\'s ' + shiftLabel(d) + ' shift' : '')).join('; ');
+    dupNote.textContent = [dups ? dups + ' already logged and will be skipped.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
     // While picks are missing the button stays tappable and jumps to the next exam that needs one.
     add.disabled = !open && n === 0;
     add.textContent = open ? 'Pick points for ' + open + ' more ↓' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
   }
-  revDate.onchange = draw;
+  revDate.onchange = () => { dayPicked = true; draw(); };
   add.onclick = () => {
     const need = list.querySelector('.item.need');
     if(need){
@@ -570,19 +581,20 @@ function showReview(found, dates){
       const s = need.querySelector('select'); if(s) setTimeout(() => s.focus({ preventScroll: true }), 350);
       return;
     }
-    const day = revDate.value || current; const have = existingKeys();
-    const target = state.days[day] = state.days[day] || [];
-    let n = 0, pts = 0, newSpine = 0;
+    const have = existingKeys(); const perDay = {};
+    let n = 0, pts = 0, newSpine = 0, spineDay = null;
     rows.forEach(r => {
       if(have.has(r.akey) || r.skip || r.points==null) return;
       if(r.ask) state.learned[r.norm] = r.points;
       const entry = { exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() };
       if(r.late){ entry.late = true; entry.ageDays = r.ageDays; }
-      target.push(entry);
-      n++; pts += entryPts(entry); if(isSpineCt(entry)) newSpine++;
+      const d = dayFor(r) || current;
+      (state.days[d] = state.days[d] || []).push(entry); perDay[d] = (perDay[d]||0) + 1;
+      n++; pts += entryPts(entry); if(isSpineCt(entry)){ newSpine++; spineDay = d; }
     });
+    let day = revDate.value; { let best = 0; for(const d in perDay) if(perDay[d] > best){ best = perDay[d]; day = d; } }
     save(); current = day; closeSheet(); render();
-    if(newSpine) askHardware(day, n, pts);
+    if(newSpine) askHardware(spineDay, n, pts);
     else toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts');
   };
   draw();
