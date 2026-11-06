@@ -489,7 +489,7 @@ async function runScan(files){
     sheet.querySelector('#cl').onclick = closeSheet; return;
   }
   sub.textContent = 'Text is read on this phone. Nothing is uploaded.';
-  const found = []; const dates = {};
+  const found = []; const dates = {}; const photos = [];
   for(let i=0;i<files.length;i++){
     const r = bars[i], st = r.querySelector('.st'), bar = r.querySelector('i');
     try{
@@ -509,7 +509,8 @@ async function runScan(files){
         r.append(m);
       } else {
         st.textContent = parsed.rows.length + ' rows';
-        parsed.rows.forEach(x => found.push(x));
+        photos.push({ name: files[i].name || ('Photo ' + (i+1)), n: parsed.rows.length, i });
+        parsed.rows.forEach(x => { x.photo = i; found.push(x); });
         if(parsed.workDate) dates[parsed.workDate] = (dates[parsed.workDate]||0) + parsed.rows.length;
       }
     }catch(err){
@@ -518,17 +519,24 @@ async function runScan(files){
     }
   }
   scanning = false;
-  showReview(found, dates);
+  showReview(found, dates, photos);
 }
 
-function showReview(found, dates){
+// One exam = its accession number plus what the exam is. Two different exams can share an
+// accession number (ordered together), so the accession alone isn't enough.
+const examId = (accession, exam) => M.accessionKey(accession) + '|' + (M.classify(exam).key || M.normalize(exam));
+const PHOTO_ROWS = 20;
+
+function showReview(found, dates, photos){
   const sheet = $('sheetBody');
 
-  // Collapse repeats across overlapping photos
+  // Every row from every photo is shown. A row that repeats one already in this scan is
+  // marked, not dropped, and can still be counted.
   const seen = new Set(); const rows = [];
   for(const f of found){
     const k = M.accessionKey(f.accession);
-    if(seen.has(k)) continue; seen.add(k);
+    const id = examId(f.accession, f.exam);
+    const repeat = seen.has(id); seen.add(id);
     const norm = M.normalize(f.exam);
     let c = M.classify(f.exam);
     let points = null, key = c.key || null;
@@ -551,7 +559,7 @@ function showReview(found, dates){
     }
     const late = !noLate && f.ageDays != null && f.ageDays >= M.LATE_DAYS;
     const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
-    rows.push({ linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
+    rows.push({ id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
   }
 
   let workDate = current;
@@ -582,6 +590,13 @@ function showReview(found, dates){
   const dupNote = document.createElement('div'); dupNote.className = 'note';
   const askNote = document.createElement('div'); askNote.className = 'callout';
   const list = document.createElement('div'); list.className = 'list';
+  // Each worklist page holds PHOTO_ROWS rows; a photo that reads fewer probably missed some.
+  const short = (photos || []).filter(p => p.n < PHOTO_ROWS);
+  if(short.length){
+    const sn = document.createElement('div'); sn.className = 'callout';
+    sn.textContent = short.map(p => p.name + ': read ' + p.n + ' of ' + PHOTO_ROWS + ' rows').join('; ') + '. Unless that\'s the last page, some rows were missed. Retake that photo closer and straight on, or add the missing exams by hand.';
+    sheet.append(sn);
+  }
   sheet.append(askNote, list, dupNote);
 
   const actions = document.createElement('div'); actions.className = 'sheet-actions';
@@ -590,19 +605,20 @@ function showReview(found, dates){
   actions.append(cancel, add); sheet.append(actions);
 
   // Accession numbers already logged on any day, so an exam is never counted twice.
-  function existingKeys(){ const s = new Set(); for(const d in state.days) dayRows(d).forEach(r => { if(r.akey) s.add(r.akey); }); return s; }
+  function existingKeys(){ const s = new Map(); for(const d in state.days) dayRows(d).forEach(r => { if(r.accession) s.set(examId(r.accession, r.exam), d); }); return s; }
+  const dupOf = (r, have) => !r.force && (r.repeat || have.has(r.id));
 
   function draw(){
     const have = existingKeys();
     list.textContent = '';
     let n = 0, pts = 0, dups = 0, open = 0;
     rows.forEach((r) => {
-      const isDup = have.has(r.akey); if(isDup) dups++;
+      const isDup = dupOf(r, have); if(isDup) dups++;
       const el = document.createElement('div'); el.className = 'item' + (isDup?' dup':'');
       const t = document.createElement('div'); t.className = 't';
       const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam;
       const meta = document.createElement('div'); meta.className = 'meta';
-      meta.textContent = (isDup ? 'Already logged · ' : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
+      meta.textContent = (isDup ? (r.repeat ? 'Same exam appears earlier in these photos · ' : 'Already logged ' + (['Today','Yesterday'].includes(prettyDay(have.get(r.id))) ? prettyDay(have.get(r.id)).toLowerCase() : 'on ' + prettyDay(have.get(r.id))) + ' · ') : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
       t.append(ex, meta);
       if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
       if(r.choice && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.choiceMsg; t.append(why); }
@@ -616,16 +632,17 @@ function showReview(found, dates){
         else { r.skip = false; r.points = sel.value===''?null:Number(sel.value); }
         draw();
       };
-      const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label','Leave out');
-      x.onclick = () => { rows.splice(rows.indexOf(r),1); draw(); };
+      const x = document.createElement('button'); x.className = 'x';
+      if(isDup){ x.textContent = '+'; x.setAttribute('aria-label','Count it anyway'); x.title = 'Count it anyway'; x.onclick = () => { r.force = true; draw(); }; }
+      else { x.textContent = '×'; x.setAttribute('aria-label','Leave out'); x.onclick = () => { rows.splice(rows.indexOf(r),1); draw(); }; }
       el.append(t, sel, x); list.append(el);
       if(!isDup && !r.skip){ if(r.points==null){ open++; el.classList.add('need'); } else { n++; pts += r.points + (r.late ? M.LATE_BONUS : 0); } }
     });
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
-    const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!have.has(r.akey) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
+    const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!dupOf(r, have) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
     const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam':' exams') + ' signed after midnight count toward ' + prettyDay(d) + (shiftLabel(d) ? '\'s ' + shiftLabel(d) + ' shift' : '')).join('; ');
-    dupNote.textContent = [dups ? dups + ' already logged and will be skipped.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
+    dupNote.textContent = [dups ? dups + (dups===1?' looks like a repeat':' look like repeats') + ' and won\'t be counted. Tap + on one to count it anyway.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
     // While picks are missing the button stays tappable and jumps to the next exam that needs one.
     add.disabled = !open && n === 0;
     add.textContent = open ? 'Pick points for ' + open + ' more ↓' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
@@ -642,7 +659,7 @@ function showReview(found, dates){
     const have = existingKeys(); const perDay = {};
     let n = 0, pts = 0, newSpine = 0, spineDay = null;
     rows.forEach(r => {
-      if(have.has(r.akey) || r.skip || r.points==null) return;
+      if(dupOf(r, have) || r.skip || r.points==null) return;
       if(r.ask) state.learned[r.norm] = r.points;
       const entry = { exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() };
       if(r.late){ entry.late = true; entry.ageDays = r.ageDays; }
