@@ -125,7 +125,9 @@
     u = u.replace(/\bMRA\b/g, 'MR MRA');
     u = u.replace(/\bLDCT\b/g, 'CT LDCT');
     // The worklist cuts "NECK" to "NEC" in long names ("CT ANGIO HEAD AND NEC W PERF").
-    u = u.replace(/\bHEAD\s*(AND|&|\/)?\s*NEC\b/g, 'HEAD AND NECK');
+    u = u.replace(/\bHEAD\s*(AND|&|\/|\+)?\s*NECK?\b/g, 'HEAD AND NECK');
+    // "CT STROKE ANGIO HEAD+NECK" is a CTA: the word STROKE sits between CT and ANGIO.
+    u = u.replace(/\bCT\s+(STROKE|CODE\s*STROKE|STAT)\s+ANGIO(GRAM|GRAPHY)?\b/g, 'CTA $1');
     // VUC = vascular ultrasound on this worklist.
     u = u.replace(/\bVUC\b/g, 'US VUC');
     return u.replace(/\s+/g, ' ').trim();
