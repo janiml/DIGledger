@@ -54,6 +54,8 @@
     ct_myelo: [5, 'CT Myelogram'],
     ct_ext_wc: [5, 'CT Extremity/joint W/ contrast, or hardware'],
     mr_wo: [5, 'MR Body/Brain/Joint/Spine W/O'],
+    mra_neck_wo: [5, 'MR Angio Neck W/O'],
+    mr_orbits_face_neck_wwo: [7, 'MR Orbits/Face/Neck W/ and W/O'],
     mr_brain_wc: [5, 'MR Brain W/ contrast only'],
     fluoro_physician: [5, 'Fluoro by physician (incl. read)'],
     nm_special: [5, 'NM Octreoscan / Renal Lasix / Gallium'],
@@ -118,6 +120,7 @@
     u = u.replace(/\bWO\s*\(?\s*C[O0]N(TRAST)?\b/g, ' WO ');
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
     u = u.replace(/\bMRI\b/g, 'MR');
+    u = u.replace(/\bMRA\b/g, 'MR MRA');
     u = u.replace(/\bLDCT\b/g, 'CT LDCT');
     // The worklist cuts "NECK" to "NEC" in long names ("CT ANGIO HEAD AND NEC W PERF").
     u = u.replace(/\bHEAD\s*(AND|&|\/)?\s*NEC\b/g, 'HEAD AND NECK');
@@ -203,10 +206,18 @@
 
     // MR
     if (has(u, MR)) {
-      if (has(u, /\bMRA\b|ANGIO/)) return { ask: 'MR angiography is not on the chart' };
+      if (has(u, /\bMRA\b|ANGIO/)) {
+        if (has(u, /NECK/) && !has(u, /HEAD|BRAIN/) && has(u, /\bWO\b/) && !has(u, WWO)) return { key: 'mra_neck_wo' };
+        return { ask: 'MR angiography is not on the chart' };
+      }
       if (has(u, /BREAST/)) return { key: 'mr_breast' };
       if (has(u, /PROSTATE|RECT|PELVI?C?\s*SOFT|PELVIS|PELVIC/)) return { key: 'mr_pelvis' };
       if (has(u, /BRACH/)) return { key: 'mr_brach_plex' };
+      if (has(u, /ORBIT|FACE|FACIAL|NECK/) && !has(u, /SPINE|CERVICAL/)) {
+        if (has(u, WWO)) return { key: 'mr_orbits_face_neck_wwo' };
+        if (has(u, /\bWO\b/)) return { key: 'mr_wo' };
+        return { ask: 'MR orbits/face/neck with contrast only is not on the chart' };
+      }
       if (has(u, /HEAD|BRAIN/)) return { key: has(u, WWO) ? 'mr_brain_wwo' : has(u, WC) ? 'mr_brain_wc' : 'mr_wo' };
       if (has(u, /SPINE|CERVICAL|THORACIC|LUMBAR/)) return { key: has(u, WWO) ? 'mr_spine_wwo' : 'mr_wo' };
       if (has(u, /ABD|LIVER|MRCP|PANCREA|RENAL|KIDNEY|ADRENAL|ENTERO/)) return { key: has(u, WWO) ? 'mr_abd_wwo' : 'mr_wo' };
