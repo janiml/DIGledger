@@ -312,7 +312,7 @@ function render(){
 }
 
 // Pick between a few chart entries when the worklist can't tell which one it is.
-const CHOICE_LABEL = { us_breast_linked_uni: 'US 1 side', us_breast_linked_bi: 'US both', mammo_diagnostic: 'No US', path_addendum: 'Addendum' };
+const CHOICE_LABEL = { ct_orbits_metal: 'Metal screen', ct_orbits: 'Disease', us_breast_linked_uni: 'US 1 side', us_breast_linked_bi: 'US both', mammo_diagnostic: 'No US', path_addendum: 'Addendum' };
 function choiceSelect(r){
   const s = document.createElement('select');
   s.append(new Option('Pick…', ''));
@@ -550,6 +550,8 @@ function showReview(found, dates, photos){
       if(lk === 'ask'){ choice = ['us_breast_linked_uni','us_breast_linked_bi','mammo_diagnostic']; choiceMsg = 'Linked ultrasound: one side or both?'; points = null; key = 'mammo_diagnostic'; c = { key }; }
       else if(lk){ key = lk; points = pointsFor(lk); c = { key }; }
     }
+    // CT orbits without contrast: metal screen before MRI, or read for disease?
+    if(!choice && key === 'ct_orbits' && M.orbitsNeedsAsk(f.exam)){ choice = ['ct_orbits_metal','ct_orbits']; choiceMsg = 'Metal screen before MRI, or read for disease?'; points = null; }
     // Breast biopsy / loc wire: procedure if read within a day, pathology addendum (0) later.
     const pr = M.procedureRule(key, f.ageDays, f.addendum);
     if(pr){

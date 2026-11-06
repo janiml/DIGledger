@@ -412,7 +412,14 @@
     return 'ask';
   }
 
-  const api = { BREAST_PROC_KEYS, procedureRule, ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
+  // A plain non-contrast CT orbits can be a pre-MRI metal screen (1) or read for disease (3);
+  // the worklist name doesn't say which, so the reader is asked. Contrast studies are always disease.
+  function orbitsNeedsAsk(exam) {
+    if (classify(exam).key !== 'ct_orbits') return false;
+    return !has(normalize(exam), WC);
+  }
+
+  const api = { orbitsNeedsAsk, BREAST_PROC_KEYS, procedureRule, ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGMatcher = api;
 })(typeof window !== 'undefined' ? window : globalThis);
