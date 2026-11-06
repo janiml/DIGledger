@@ -119,6 +119,8 @@
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
     u = u.replace(/\bMRI\b/g, 'MR');
     u = u.replace(/\bLDCT\b/g, 'CT LDCT');
+    // The worklist cuts "NECK" to "NEC" in long names ("CT ANGIO HEAD AND NEC W PERF").
+    u = u.replace(/\bHEAD\s*(AND|&|\/)?\s*NEC\b/g, 'HEAD AND NECK');
     // VUC = vascular ultrasound on this worklist.
     u = u.replace(/\bVUC\b/g, 'US VUC');
     return u.replace(/\s+/g, ' ').trim();
