@@ -119,6 +119,8 @@
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
     u = u.replace(/\bMRI\b/g, 'MR');
     u = u.replace(/\bLDCT\b/g, 'CT LDCT');
+    // VUC = vascular ultrasound on this worklist.
+    u = u.replace(/\bVUC\b/g, 'US VUC');
     return u.replace(/\s+/g, ' ').trim();
   }
 
@@ -253,7 +255,7 @@
     return { ask: 'Not on the chart' };
   }
 
-  const MODALITY_START = /\b(CTA|CT|MRI|MRA|MR|US|MM|MG|MAMMO|XR|DX|CR|NM|PET|FL|IR|RF)\b/;
+  const MODALITY_START = /\b(CTA|CT|MRI|MRA|MR|US|VUC|MM|MG|MAMMO|XR|DX|CR|NM|PET|FL|IR|RF)\b/;
   // Accession numbers look like A000002157426H; OCR often swaps 0 for O/Q/D.
   const ACCESSION = /\bA[0-9A-Z]{0,5}\d{6,}[A-Z]{0,3}\b/;
   const DATE = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/;
