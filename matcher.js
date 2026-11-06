@@ -55,6 +55,8 @@
     ct_ext_wc: [5, 'CT Extremity/joint W/ contrast, or hardware'],
     mr_wo: [5, 'MR Body/Brain/Joint/Spine W/O'],
     mra_neck_wo: [5, 'MR Angio Neck W/O'],
+    mra_head: [5, 'MR Angio Head'],
+    mr_orbits_face_neck_wc: [5, 'MR Orbits/Face/Neck W/'],
     mr_orbits_face_neck_wwo: [7, 'MR Orbits/Face/Neck W/ and W/O'],
     mr_brain_wc: [5, 'MR Brain W/ contrast only'],
     fluoro_physician: [5, 'Fluoro by physician (incl. read)'],
@@ -208,6 +210,7 @@
     if (has(u, MR)) {
       if (has(u, /\bMRA\b|ANGIO/)) {
         if (has(u, /NECK/) && !has(u, /HEAD|BRAIN/) && has(u, /\bWO\b/) && !has(u, WWO)) return { key: 'mra_neck_wo' };
+        if (has(u, /HEAD|BRAIN|\bCOW\b|WILLIS/) && !has(u, /NECK/)) return { key: 'mra_head' };
         return { ask: 'MR angiography is not on the chart' };
       }
       if (has(u, /BREAST/)) return { key: 'mr_breast' };
@@ -216,7 +219,7 @@
       if (has(u, /ORBIT|FACE|FACIAL|NECK/) && !has(u, /SPINE|CERVICAL/)) {
         if (has(u, WWO)) return { key: 'mr_orbits_face_neck_wwo' };
         if (has(u, /\bWO\b/)) return { key: 'mr_wo' };
-        return { ask: 'MR orbits/face/neck with contrast only is not on the chart' };
+        return { key: 'mr_orbits_face_neck_wc' };
       }
       if (has(u, /HEAD|BRAIN/)) return { key: has(u, WWO) ? 'mr_brain_wwo' : has(u, WC) ? 'mr_brain_wc' : 'mr_wo' };
       if (has(u, /SPINE|CERVICAL|THORACIC|LUMBAR/)) return { key: has(u, WWO) ? 'mr_spine_wwo' : 'mr_wo' };
