@@ -562,6 +562,8 @@ function showReview(found, dates, photos){
     // so adding an exam to the chart later replaces any older hand pick.
     if(c.key) points = pointsFor(c.key);
     else if(state.learned[norm] != null){ points = state.learned[norm]; key = 'learned'; c = { key }; }
+    // Name partly cut off in the photo: the rest of it could change the points, so ask.
+    if(f.partial){ points = null; key = null; c = { ask: 'Name cut off in the photo (' + (M.classify(f.exam).key ? pointsFor(M.classify(f.exam).key) + ' pts if this is the full name' : 'check it') + '). Check it on the screen.' }; }
     // Blue box: a breast ultrasound linked with its diagnostic mammogram.
     // choice: options the reader must pick between when the list can't tell.
     let choice = null, choiceMsg = '', noLate = false;
@@ -581,7 +583,7 @@ function showReview(found, dates, photos){
     }
     const late = !noLate && f.ageDays != null && f.ageDays >= M.LATE_DAYS;
     const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
-    rows.push({ id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: true, late, ageDays: f.ageDays });
+    rows.push({ id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: !(f.unreadable || f.partial), late, ageDays: f.ageDays });
   }
 
   let workDate = current;
@@ -661,7 +663,7 @@ function showReview(found, dates, photos){
       if(!isDup && !r.skip){ if(r.points==null){ open++; el.classList.add('need'); } else { n++; pts += r.points + (r.late ? M.LATE_BONUS : 0); } }
     });
     askNote.hidden = !rows.some(r => r.ask);
-    askNote.textContent = open ? open + (open===1?' exam isn\'t':' exams aren\'t') + ' on your chart. Pick points or Skip; your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
+    askNote.textContent = open ? open + (open===1?' exam needs':' exams need') + ' points. Pick points or Skip. For exams not on your chart, your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
     const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!dupOf(r, have) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
     const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam':' exams') + ' signed after midnight count toward ' + prettyDay(d) + (shiftLabel(d) ? '\'s ' + shiftLabel(d) + ' shift' : '')).join('; ');
     dupNote.textContent = [dups ? dups + (dups===1?' looks like a repeat':' look like repeats') + ' and won\'t be counted. Tap + on one to count it anyway.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
@@ -682,7 +684,7 @@ function showReview(found, dates, photos){
     let n = 0, pts = 0, newSpine = 0, spineDay = null;
     rows.forEach(r => {
       if(dupOf(r, have) || r.skip || r.points==null) return;
-      if(r.ask) state.learned[r.norm] = r.points;
+      if(r.ask && r.remember) state.learned[r.norm] = r.points;
       const entry = { exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() };
       if(r.late){ entry.late = true; entry.ageDays = r.ageDays; }
       const d = dayFor(r) || current;

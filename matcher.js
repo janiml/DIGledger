@@ -148,6 +148,7 @@
 
   // Returns {key} for a confident match, or {ask: reason} when the chart can't decide it.
   function classify(exam) {
+    if (/^\s*UNREADABLE\b/i.test(exam)) return { ask: 'Couldn\'t read the exam name. Check this accession on the screen.' };
     const u = normalize(exam);
     if (!u) return { ask: 'No exam text' };
 
@@ -275,7 +276,7 @@
 
     // Xray
     if (has(u, /BONE\s*SURVEY|SKELETAL\s*SURVEY/)) return { key: 'xray_bone_survey' };
-    if (has(u, /\b(XR|DX|CR|X\s*-?\s*RAY|RADIOGRAPH)\b/)) return { key: has(u, /BILAT|\bBI\b|BOTH/) ? 'xray_bilat' : 'xray' };
+    if (has(u, /\b(XR|DX|CR|X\s*-?\s*RAY|RADIOGRAPH)\b/)) return { key: has(u, /BILAT|\bBI\b|BOTH/) && !has(u, /\b(LEFT|RIGHT|LT|RT|LET|LFT|RGT)\b/) ? 'xray_bilat' : 'xray' };
 
     return { ask: 'Not on the chart' };
   }
@@ -286,6 +287,7 @@
   const DATE = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/;
   // The worklist's second line per exam: "CT - SPINE/LUMBER", "MR - HEAD", "Unknown - Unknown".
   const CATEGORY = /^\W*(CT|MR|US|XR|NM|MM|MG|FL|IR|DX|CR|PET)\s*[-–—~]\s*[A-Z]/;
+  const CATEGORY_XR = /^\W*[X32*%]R\s*[-–—~]\s*[A-Z]/;
   const DATE_TIME = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b(?:\s+(\d{1,2})[:.](\d{2})(?::\d{2})?(?:\s*([AaPp])\.?[Mm]?\b)?)?/g;
   // Minutes after midnight, or null when no time was read.
   function clock(h, m, ap) {
@@ -300,14 +302,23 @@
   // Only applied to tokens shaped like this worklist's accessions (A + 12 digits starting 000 + 1-3 letters).
   const TO_DIGIT = { O: '0', D: '0', Q: '0', U: '0', I: '1', L: '1', '|': '1', Z: '2', S: '5', G: '6', T: '7', B: '8' };
   function fixAccessions(line) {
-    return String(line).replace(/\S{12,18}/g, (tok) => {
+    // A stray space inside the number ("400000354167 1H", "00000354 1800LC").
+    line = String(line).replace(/(\b[A-Z4-9]?[0-9ODQU]{4,}\d+)\s(\d{1,8}[A-Z0-9]{0,3}\b)/g, (m, a, b) => (a + b).length >= 13 && (a + b).length <= 16 ? a + b : m);
+    return line.replace(/\S{12,18}/g, (tok) => {
       const t = tok.toUpperCase().replace(/[^A-Z0-9|]/g, '');
-      for (const body of [t[0] === 'A' || t[0] === '4' ? t.slice(1) : null, t].filter(Boolean)) {
+      // The leading A is often misread (4, 6, R...) or dropped; try with and without the first character.
+      for (const body0 of [t[0] !== '0' ? t.slice(1) : null, t].filter(Boolean)) {
+        let body = body0;
+        // A final H read as 4: thirteen characters and no letters at the end.
+        if (/^.{12}4$/.test(body)) body = body.slice(0, 12) + 'H';
         if (body.length < 13 || body.length > 15) continue;
-        const digits = body.slice(0, 12).replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch);
-        const suffix = body.slice(12);
-        if (!/^\d{12}$/.test(digits) || !digits.startsWith('000') || !/^[A-Z]{1,3}$/.test(suffix)) continue;
-        if ((body.slice(0, 12).match(/\d/g) || []).length < 7) continue;
+        const zone = body.slice(0, 12), suffix = body.slice(12);
+        // Accessions here start with five zeros; letters there are misread zeros.
+        const head = zone.slice(0, 5).replace(/[A-Z|]/g, '0');
+        const rest = zone.slice(5).replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch);
+        const digits = head + rest;
+        if (head !== '00000' || !/^\d{12}$/.test(digits) || !/^[A-Z]{1,3}$/.test(suffix)) continue;
+        if ((zone.slice(5).match(/\d/g) || []).length < 5) continue;
         return 'A' + digits + suffix;
       }
       return tok;
@@ -365,7 +376,8 @@
       const line = lines[i];
       const acc = line.toUpperCase().match(ACCESSION);
       if (!acc) continue;
-      const before = line.slice(0, acc.index).toUpperCase().replace(/[A-Z]{10,}/g, unglue);
+      const before = line.slice(0, acc.index).toUpperCase().replace(/[A-Z]{10,}/g, unglue)
+        .replace(/(^|[^A-Z])[X*%A]R(?=(CHEST|FOOT|HAND|KNEE|WRIST|ANKLE|HIP|SHOULDER|ELBOW|SPINE|PELVIS|ABD|KUB|FEMUR|TIB|HUMER|FOREARM|FINGER|TOE|SKULL|RIB|NECK|SINUS|FACE)|\b)/g, '$1XR ');
       // Patient names come first ("LAST, FIRST"); the exam starts at the first modality word after the comma.
       const commaAt = before.indexOf(',');
       const searchFrom = commaAt >= 0 ? commaAt + 1 : 0;
@@ -390,7 +402,15 @@
           }
         }
       }
-      if (!mod) continue;
+      let unreadable = false, partial = false;
+      // An angiogram whose "CT" was clipped off the edge of the photo.
+      if (!mod && /^\W*ANGIO\b/.test(tail.trim())) { tail = 'CT ' + tail.trim().replace(/\bMECK\b/g, 'NECK'); mod = tail.match(MODALITY_START); partial = true; }
+      if (!mod) {
+        // The accession is clear but the exam name isn't. Keep the row (so it isn't silently lost)
+        // with whatever letters survived, and let the reader pick its points.
+        const bits = (tail.match(/[A-Z]{3,}/g) || []).filter(w => !/^(COMPLETE|SIGNED|STAT|NORMAL|FIOLA|FRANK)$/.test(w)).join(' ');
+        tail = 'UNREADABLE ' + bits; mod = { index: 0 }; unreadable = true;
+      }
       let exam = tail.slice(mod.index).replace(/[^A-Z0-9\/<>&+\- .()]/g, ' ').replace(/\s+/g, ' ').trim();
       // An exam that wraps ("CT CERVICAL SPINE WO" / "CON") — pull a short continuation word from the next line.
       const next = (lines[i + 1] || '').toUpperCase();
@@ -415,7 +435,7 @@
       } else signedDate = listDate;
       const ageDays = examDate && signedDate ? daysBetween(examDate, signedDate) : null;
       if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
-      rows.push({ exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
+      rows.push({ unreadable, partial, exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
     }
     let workDate = listDate, best = 0;
     if (!workDate) for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
