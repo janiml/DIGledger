@@ -56,6 +56,7 @@
     mr_wo: [5, 'MR Body/Brain/Joint/Spine W/O'],
     mra_neck_wo: [5, 'MR Angio Neck W/O'],
     mra_head: [5, 'MR Angio Head'],
+    cta_head: [5, 'CT Angio Head'],
     mr_orbits_face_neck_wc: [5, 'MR Orbits/Face/Neck W/'],
     mr_orbits_face_neck_wwo: [7, 'MR Orbits/Face/Neck W/ and W/O'],
     mr_brain_wc: [5, 'MR Brain W/ contrast only'],
@@ -171,6 +172,7 @@
       if (has(u, /NECK/)) return { key: 'cta_head_neck' };
       // Stroke CTA ("CT STROKE ANGIO") is the head and neck angiogram.
       if (has(u, /STROKE/)) return { key: 'cta_head_neck' };
+      if (has(u, /HEAD|BRAIN|\bCOW\b|WILLIS/) && !has(u, /VENO/)) return { key: 'cta_head' };
       if (has(u, /ABD|PELV/)) return { key: 'cta_abd_pelv' };
       if (has(u, /CHEST|\bPE\b|PULM/)) return { key: 'ct_pe' };
       return { ask: 'CTA of this region is not on the chart' };
