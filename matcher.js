@@ -284,6 +284,8 @@
   // Accession numbers look like A000002157426H; OCR often swaps 0 for O/Q/D.
   const ACCESSION = /\bA[0-9A-Z]{0,5}\d{6,}[A-Z]{0,3}\b/;
   const DATE = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/;
+  // The worklist's second line per exam: "CT - SPINE/LUMBER", "MR - HEAD", "Unknown - Unknown".
+  const CATEGORY = /^\W*(CT|MR|US|XR|NM|MM|MG|FL|IR|DX|CR|PET)\s*[-–—~]\s*[A-Z]/;
   const DATE_TIME = /\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b(?:\s+(\d{1,2})[:.](\d{2})(?::\d{2})?(?:\s*([AaPp])\.?[Mm]?\b)?)?/g;
   // Minutes after midnight, or null when no time was read.
   function clock(h, m, ap) {
@@ -291,6 +293,25 @@
     h = Number(h); m = Number(m);
     if (ap) { ap = ap.toUpperCase(); if (ap === 'P' && h < 12) h += 12; if (ap === 'A' && h === 12) h = 0; }
     return h < 24 && m < 60 ? h * 60 + m : null;
+  }
+
+  // Repair accession numbers the text reader mangles on screen photos: the leading A read as 4 or
+  // dropped, and look-alike letters inside the 12 digits ("S" for 5, "O"/"D" for 0, "B" for 8).
+  // Only applied to tokens shaped like this worklist's accessions (A + 12 digits starting 000 + 1-3 letters).
+  const TO_DIGIT = { O: '0', D: '0', Q: '0', U: '0', I: '1', L: '1', '|': '1', Z: '2', S: '5', G: '6', T: '7', B: '8' };
+  function fixAccessions(line) {
+    return String(line).replace(/\S{12,18}/g, (tok) => {
+      const t = tok.toUpperCase().replace(/[^A-Z0-9|]/g, '');
+      for (const body of [t[0] === 'A' || t[0] === '4' ? t.slice(1) : null, t].filter(Boolean)) {
+        if (body.length < 13 || body.length > 15) continue;
+        const digits = body.slice(0, 12).replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch);
+        const suffix = body.slice(12);
+        if (!/^\d{12}$/.test(digits) || !digits.startsWith('000') || !/^[A-Z]{1,3}$/.test(suffix)) continue;
+        if ((body.slice(0, 12).match(/\d/g) || []).length < 7) continue;
+        return 'A' + digits + suffix;
+      }
+      return tok;
+    });
   }
 
   function cleanAccession(a) {
@@ -331,7 +352,8 @@
   }
 
   function parseWorklist(text) {
-    const lines = String(text || '').split(/\r?\n/);
+    const lines = String(text || '').split(/\r?\n/).map(fixAccessions);
+    const used = new Set();
     const rows = [];
     // The list's Start/End Date filter sits above the first row. When both are the same day,
     // that is the day everything on the list was signed.
@@ -347,8 +369,27 @@
       // Patient names come first ("LAST, FIRST"); the exam starts at the first modality word after the comma.
       const commaAt = before.indexOf(',');
       const searchFrom = commaAt >= 0 ? commaAt + 1 : 0;
-      const tail = before.slice(searchFrom);
-      const mod = tail.match(MODALITY_START);
+      let tail = before.slice(searchFrom);
+      let mod = tail.match(MODALITY_START);
+      const nextU = (lines[i + 1] || '').toUpperCase();
+      if (!mod) {
+        // The photo's left edge clipped the modality ("LUMBAR SPINE WO CON"). The line below
+        // carries the category ("CT - SPINE/LUMBER"), which names it.
+        const cat = nextU.match(CATEGORY);
+        const words = tail.replace(/[^A-Z ]/g, ' ').trim();
+        if (cat && /[A-Z]{3,}.*\s[A-Z]{2,}/.test(words)) { tail = (/^ANGIO/.test(words) ? 'CT' : cat[1]) + ' ' + words; mod = tail.match(MODALITY_START); }
+        else if (!/[A-Z]{3,}/.test(words)) {
+          // Nothing before the accession: on a tilted photo the exam name can land on the line just
+          // below or above. Use it if it reads as an exam name (not a category line) and isn't taken.
+          for (const k of [i + 1, i - 1]) {
+            const L = (lines[k] || '').toUpperCase();
+            if (k < 0 || used.has(k) || ACCESSION.test(L) || CATEGORY.test(L)) continue;
+            const m = L.match(MODALITY_START);
+            if (!m || !/^\W*$/.test(L.slice(0, m.index).replace(/[A-Z]{1,2}\b/g, ''))) continue;
+            tail = L.slice(m.index).split(/\s{2,}|\s\d/)[0]; mod = tail.match(MODALITY_START); used.add(k); break;
+          }
+        }
+      }
       if (!mod) continue;
       let exam = tail.slice(mod.index).replace(/[^A-Z0-9\/<>&+\- .()]/g, ' ').replace(/\s+/g, ' ').trim();
       // An exam that wraps ("CT CERVICAL SPINE WO" / "CON") — pull a short continuation word from the next line.
@@ -360,8 +401,9 @@
       const nextLine = lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase()) ? lines[i + 1] : '';
       // The status column says "Addendum" when the report was amended (e.g. pathology results).
       const addendum = /ADDEN/i.test(line.slice(acc.index + acc[0].length) + ' ' + nextLine);
-      let stamps = stampsIn(line.slice(acc.index + acc[0].length));
-      if (!stamps.length && lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase())) stamps = stampsIn(lines[i + 1]);
+      // A row spans two lines: the exam date sits under the accession, and some layouts also show
+      // the signed date and time ("Job State") on the first line. Take the dates from both lines.
+      const stamps = stampsIn(line.slice(acc.index + acc[0].length) + '  ' + nextLine);
       let examDate = null, signedDate = null, signedTime = null;
       if (stamps.length > 1) {
         // Both dates on the row: the earlier is the exam, the later is when it was signed.
@@ -426,7 +468,7 @@
     return !has(normalize(exam), WC);
   }
 
-  const api = { orbitsNeedsAsk, BREAST_PROC_KEYS, procedureRule, ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
+  const api = { fixAccessions, orbitsNeedsAsk, BREAST_PROC_KEYS, procedureRule, ACCESSION, linkedKey, LATE_DAYS, LATE_BONUS, HARDWARE_BONUS, SPINE_CT_KEYS, daysBetween, DEFAULT_POINTS, normalize, classify, parseWorklist, cleanAccession, accessionKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DIGMatcher = api;
 })(typeof window !== 'undefined' ? window : globalThis);
