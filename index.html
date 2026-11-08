@@ -540,8 +540,10 @@ function showReview(found, dates, photos){
     const norm = M.normalize(f.exam);
     let c = M.classify(f.exam);
     let points = null, key = c.key || null;
-    if(state.learned[norm] != null){ points = state.learned[norm]; key = key || 'learned'; c = { key }; }
-    else if(c.key) points = pointsFor(c.key);
+    // The chart wins. A remembered pick is only used for exams the chart doesn't know,
+    // so adding an exam to the chart later replaces any older hand pick.
+    if(c.key) points = pointsFor(c.key);
+    else if(state.learned[norm] != null){ points = state.learned[norm]; key = 'learned'; c = { key }; }
     // Blue box: a breast ultrasound linked with its diagnostic mammogram.
     // choice: options the reader must pick between when the list can't tell.
     let choice = null, choiceMsg = '', noLate = false;

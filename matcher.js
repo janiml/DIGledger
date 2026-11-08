@@ -169,6 +169,8 @@
       if (has(u, /CHEST/) && has(u, /ABD|PELV/)) return { key: 'cta_cap' };
       if (has(u, /AORT/)) return { key: 'cta_aorta' };
       if (has(u, /NECK/)) return { key: 'cta_head_neck' };
+      // Stroke CTA ("CT STROKE ANGIO") is the head and neck angiogram.
+      if (has(u, /STROKE/)) return { key: 'cta_head_neck' };
       if (has(u, /ABD|PELV/)) return { key: 'cta_abd_pelv' };
       if (has(u, /CHEST|\bPE\b|PULM/)) return { key: 'ct_pe' };
       return { ask: 'CTA of this region is not on the chart' };
