@@ -121,8 +121,12 @@
   // Which day an exam counts toward. Work signed after midnight on an overnight shift counts
   // toward the day the shift started. signedTime is minutes after midnight, or null if unknown.
   function creditDay(signedDate, signedTime, days, overrides) {
-    if (!signedDate || !days) return signedDate;
+    if (!signedDate) return signedDate;
     const prev = addDays(signedDate, -1);
+    // No shift starts reading before 6 am, so anything signed between midnight and 6 am
+    // is overnight work and counts toward the night before.
+    if (signedTime != null && signedTime < 6 * 60) return prev;
+    if (!days) return signedDate;
     const night = readingShift(days[prev], overrides);
     if (!night || night.end <= 24) return signedDate;
     const endMin = (night.end - 24) * 60;

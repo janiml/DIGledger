@@ -582,7 +582,7 @@ function showReview(found, dates, photos){
       else if(pr === 'ask'){ choice = [key, 'path_addendum']; choiceMsg = 'Read ' + f.ageDays + ' days after the exam: the procedure or the pathology addendum?'; points = null; }
     }
     const late = !noLate && f.ageDays != null && f.ageDays >= M.LATE_DAYS;
-    const day = state.schedule && state.schedule.name ? S.creditDay(f.signedDate, f.signedTime, state.schedule.days, state.targets) : f.signedDate;
+    const day = S.creditDay(f.signedDate, f.signedTime, state.schedule && state.schedule.name ? state.schedule.days : null, state.targets);
     rows.push({ id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: !(f.unreadable || f.partial), late, ageDays: f.ageDays });
   }
 
@@ -694,7 +694,10 @@ function showReview(found, dates, photos){
     let day = revDate.value; { let best = 0; for(const d in perDay) if(perDay[d] > best){ best = perDay[d]; day = d; } }
     save(); current = day; closeSheet(); render();
     if(newSpine) askHardware(spineDay, n, pts);
-    else toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts');
+    else {
+      const ds = Object.keys(perDay).sort();
+      toast('Added ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' + (ds.length > 1 ? ' (' + ds.map(d => perDay[d] + ' to ' + prettyDay(d)).join(', ') + ')' : ''));
+    }
   };
   draw();
 }
