@@ -102,6 +102,8 @@ h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:
 .hist .item.on{background:var(--teal-wash)}
 .links{display:flex;flex-wrap:wrap;gap:8px}
 .links button{background:none;border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;color:var(--muted)}
+.links button.clear-day{color:var(--red,#b3261e);border-color:currentColor}
+.btn-danger{background:var(--red,#b3261e);color:#fff;border-color:transparent}
 
 /* Sheet */
 .scrim{position:fixed;inset:0;background:rgba(8,12,16,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
@@ -171,7 +173,7 @@ h2{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:
     <button class="btn btn-quiet" id="manualBtn">By hand</button>
     <input type="file" id="fileInput" accept="image/*" multiple hidden>
   </div>
-  <p class="hint">Pick one or more photos or screenshots of Completed Jobs. Overlapping photos are fine; repeats are skipped by accession number. Patient names are never saved.</p>
+  <p class="hint">Pick one or more photos or screenshots of Completed Jobs. Overlapping photos are fine; repeats are marked so nothing is counted twice. Patient names are never saved.</p>
 
   <section>
     <h2><span>Exams this day</span><span id="exportDay" role="button" tabindex="0" style="cursor:pointer;color:var(--teal)">Export CSV</span></h2>
@@ -293,6 +295,14 @@ function render(){
     el.append(t, sel); box.append(el);
   }
 
+  if(rows.length > 1){
+    const wrap = document.createElement('div'); wrap.className = 'links'; wrap.style.marginTop = '12px';
+    const del = document.createElement('button'); del.className = 'clear-day';
+    del.textContent = 'Delete all ' + rows.length + ' exams for this day';
+    del.onclick = () => clearDay(current);
+    wrap.append(del); box.append(wrap);
+  }
+
   const hist = $('history'); hist.textContent = '';
   const days = Object.keys(state.days).filter(k => dayRows(k).length).sort().reverse().slice(0,30);
   if(!days.length) hist.innerHTML = '<div class="empty">Days you log show up here.</div>';
@@ -380,6 +390,21 @@ $('dayInput').onchange = (e) => { if(e.target.value){ current = e.target.value; 
 
 // ---------- toast ----------
 let toastTimer;
+// Remove every exam on a day (and its hardware count), after a confirm, with Undo.
+function clearDay(d){
+  const n = dayRows(d).length; if(!n) return;
+  const sheet = openSheet();
+  sheet.innerHTML = '<h3></h3><div class="sub">You can undo this right after.</div><div class="sheet-actions"><button class="btn btn-quiet" id="cdNo">Cancel</button><button class="btn btn-danger" id="cdYes"></button></div>';
+  sheet.querySelector('h3').textContent = 'Delete all ' + n + ' exams for ' + (['Today','Yesterday'].includes(prettyDay(d)) ? prettyDay(d).toLowerCase() : prettyDay(d)) + '?';
+  sheet.querySelector('#cdYes').textContent = 'Delete ' + n + ' exams';
+  sheet.querySelector('#cdNo').onclick = closeSheet;
+  sheet.querySelector('#cdYes').onclick = () => {
+    const saved = state.days[d], hw = state.hardware[d];
+    delete state.days[d]; delete state.hardware[d]; save(); closeSheet(); render();
+    toast('Deleted ' + n + ' exams', 'Undo', () => { state.days[d] = saved; if(hw) state.hardware[d] = hw; save(); render(); });
+  };
+}
+
 function toast(msg, actionLabel, action){
   const t = $('toast'); t.textContent = '';
   const s = document.createElement('span'); s.textContent = msg; t.append(s);
