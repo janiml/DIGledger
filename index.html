@@ -673,7 +673,7 @@ function showReview(found, dates, photos){
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam needs':' exams need') + ' points. Pick points or Skip. For exams not on your chart, your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
     const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!dupOf(r, have) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
-    const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam':' exams') + ' signed after midnight count toward ' + prettyDay(d) + (shiftLabel(d) ? '\'s ' + shiftLabel(d) + ' shift' : '')).join('; ');
+    const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam goes':' exams go') + ' to ' + prettyDay(d) + (d < revDate.value ? (shiftLabel(d) ? ' (' + shiftLabel(d) + ' shift)' : ' (overnight work counts toward the night before)') : '')).join('; ') + (Object.keys(moved).length ? '. Change the day above to put them all on one day' : '');
     dupNote.textContent = [dups ? dups + (dups===1?' looks like a repeat':' look like repeats') + ' and won\'t be counted. Tap + on one to count it anyway.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
     // While picks are missing the button stays tappable and jumps to the next exam that needs one.
     add.disabled = !open && n === 0;

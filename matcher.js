@@ -424,7 +424,7 @@
       // A row spans two lines: the exam date sits under the accession, and some layouts also show
       // the signed date and time ("Job State") on the first line. Take the dates from both lines.
       const stamps = stampsIn(line.slice(acc.index + acc[0].length) + '  ' + nextLine);
-      let examDate = null, signedDate = null, signedTime = null;
+      let examDate = null, signedDate = null, signedTime = null, oneDate = false;
       if (stamps.length > 1) {
         // Both dates on the row: the earlier is the exam, the later is when it was signed.
         examDate = stamps[0].d; signedDate = stamps[stamps.length - 1].d; signedTime = stamps[stamps.length - 1].t;
@@ -432,11 +432,27 @@
         // One date on the row is the exam date; the list's date filter is the day it was signed.
         examDate = stamps[0].d;
         signedDate = listDate && listDate >= examDate ? listDate : examDate;
+        oneDate = !listDate;
       } else signedDate = listDate;
       const ageDays = examDate && signedDate ? daysBetween(examDate, signedDate) : null;
-      if (signedDate) dateCounts[signedDate] = (dateCounts[signedDate] || 0) + 1;
-      rows.push({ unreadable, partial, exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
+      rows.push({ unreadable, partial, oneDate, exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
     }
+    // A row where the signed date wasn't read has only its exam date. When the other rows on the
+    // photo show when they were signed, this one was signed then too, not on its exam date.
+    const full = {}; let main = null, mainN = 0;
+    rows.forEach(r => { if (!r.oneDate && r.examDate && r.signedDate && r.examDate !== r.signedDate || (!r.oneDate && r.signedTime != null)) full[r.signedDate] = (full[r.signedDate] || 0) + 1; });
+    for (const d in full) if (full[d] > mainN) { mainN = full[d]; main = d; }
+    // No signed dates anywhere on the photo: most exams are read the day they're done, so the
+    // most common date is the reading day, and older exams were read then too.
+    if (!main && !listDate) {
+      const ex = {}; rows.forEach(r => { if (r.examDate) ex[r.examDate] = (ex[r.examDate] || 0) + 1; });
+      for (const d in ex) if (ex[d] > mainN) { mainN = ex[d]; main = d; }
+      if (mainN < 2) main = null;
+    }
+    if (main) rows.forEach(r => {
+      if (r.oneDate && r.examDate && main >= r.examDate) { r.signedDate = main; r.signedTime = null; r.ageDays = daysBetween(r.examDate, main); }
+    });
+    rows.forEach(r => { if (r.signedDate) dateCounts[r.signedDate] = (dateCounts[r.signedDate] || 0) + 1; });
     let workDate = listDate, best = 0;
     if (!workDate) for (const d in dateCounts) if (dateCounts[d] > best) { best = dateCounts[d]; workDate = d; }
     if (!workDate) {
