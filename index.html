@@ -542,7 +542,15 @@ async function runScan(files){
 
 // One exam = its accession number plus what the exam is. Two different exams can share an
 // accession number (ordered together), so the accession alone isn't enough.
-const examId = (accession, exam) => M.accessionKey(accession) + '|' + (M.classify(exam).key || M.normalize(exam));
+// One exam = accession number + scoring category + body part and side. Exams ordered together
+// can share an accession (lumbar + thoracic spine CT, hand + wrist x-ray), so the category alone
+// isn't enough; body part words still match when the reader garbles small words like CON/COM.
+const REGION_WORDS = /\b(HEAD|BRAIN|NECK|ORBITS?|FACE|FACIAL|SINUS(?:ES)?|IACS?|PITUITARY|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX|SPINE|CHEST|THORAX|LUNG|HEART|CARDIAC|CORONARY|ABDOMEN|ABD|PELVIS|KIDNEYS?|RENAL|LIVER|AORTA|SHOULDER|HUMERUS|ELBOW|FOREARM|WRIST|HAND|FINGERS?|THUMB|HIP|FEMUR|KNEE|TIBIA|TIB|FIB|ANKLE|FOOT|CALCANEUS|TOES?|RIBS?|STERNUM|CLAVICLE|SCAPULA|KUB|BREAST|MAMMO|THYROID|SCROTUM|TESTES|UTERUS|OB|OVARIES|CAROTID|VENOUS|ARTERIAL|EXTREMITY|UPPER|LOWER|LEFT|RIGHT|BILAT|LT|RT)\b/g;
+const examId = (accession, exam) => {
+  const n = M.normalize(exam);
+  const region = [...new Set(n.match(REGION_WORDS) || [])].map(w => w.replace(/^LT$/, 'LEFT').replace(/^RT$/, 'RIGHT').replace(/^ABD$/, 'ABDOMEN')).sort().join(' ');
+  return M.accessionKey(accession) + '|' + (M.classify(exam).key || n) + '|' + region;
+};
 const PHOTO_ROWS = 20;
 
 function showReview(found, dates, photos){
