@@ -571,11 +571,24 @@ async function runScan(files){
 // can share an accession (lumbar + thoracic spine CT, hand + wrist x-ray), so the category alone
 // isn't enough; body part words still match when the reader garbles small words like CON/COM.
 const REGION_WORDS = /\b(HEAD|BRAIN|NECK|ORBITS?|FACE|FACIAL|SINUS(?:ES)?|IACS?|PITUITARY|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX|SPINE|CHEST|THORAX|LUNG|HEART|CARDIAC|CORONARY|ABDOMEN|ABD|PELVIS|KIDNEYS?|RENAL|LIVER|AORTA|SHOULDER|HUMERUS|ELBOW|FOREARM|WRIST|HAND|FINGERS?|THUMB|HIP|FEMUR|KNEE|TIBIA|TIB|FIB|ANKLE|FOOT|CALCANEUS|TOES?|RIBS?|STERNUM|CLAVICLE|SCAPULA|KUB|BREAST|MAMMO|THYROID|SCROTUM|TESTES|UTERUS|OB|OVARIES|CAROTID|VENOUS|ARTERIAL|EXTREMITY|UPPER|LOWER|LEFT|RIGHT|BILAT|LT|RT)\b/g;
-const examId = (accession, exam) => {
+// What the exam is: scoring category plus body part and side.
+const whatOf = (exam) => {
   const n = M.normalize(exam);
   const region = [...new Set(n.match(REGION_WORDS) || [])].map(w => w.replace(/^LT$/, 'LEFT').replace(/^RT$/, 'RIGHT').replace(/^ABD$/, 'ABDOMEN')).sort().join(' ');
-  return M.accessionKey(accession) + '|' + (M.classify(exam).key || n) + '|' + region;
+  return '|' + (M.classify(exam).key || n) + '|' + region;
 };
+// Without a readable accession, the signed date and time stand in (nearly unique per exam).
+// With neither, there's nothing to match on and the row is always counted.
+const examId = (accession, exam, signed) => {
+  const n = M.normalize(exam);
+  const region = [...new Set(n.match(REGION_WORDS) || [])].map(w => w.replace(/^LT$/, 'LEFT').replace(/^RT$/, 'RIGHT').replace(/^ABD$/, 'ABDOMEN')).sort().join(' ');
+  const what = whatOf(exam);
+  if(accession) return M.accessionKey(accession) + what;
+  if(signed) return 'T' + signed + what;
+  return null;
+};
+const clockText = (m) => { const hh = Math.floor(m/60), mm = String(m%60).padStart(2,'0'); return ((hh+11)%12+1) + ':' + mm + (hh < 12 ? ' am' : ' pm'); };
+const signedOf = (f) => f.signedDate && f.signedTime != null ? f.signedDate + ' ' + f.signedTime : null;
 const PHOTO_ROWS = 20;
 
 function showReview(found, dates, photos){
@@ -586,8 +599,9 @@ function showReview(found, dates, photos){
   const seen = new Set(); const rows = [];
   for(const f of found){
     const k = M.accessionKey(f.accession);
-    const id = examId(f.accession, f.exam);
-    const repeat = seen.has(id); seen.add(id);
+    const signed = signedOf(f);
+    const id = examId(f.accession, f.exam, signed);
+    const repeat = id != null && seen.has(id); if(id != null) seen.add(id);
     const norm = M.normalize(f.exam);
     let c = M.classify(f.exam);
     let points = null, key = c.key || null;
@@ -616,13 +630,20 @@ function showReview(found, dates, photos){
     }
     const late = !noLate && f.ageDays != null && f.ageDays >= M.LATE_DAYS;
     const day = S.creditDay(f.signedDate, f.signedTime, state.schedule && state.schedule.name ? state.schedule.days : null, state.targets);
-    rows.push({ id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: !(f.unreadable || f.partial), late, ageDays: f.ageDays });
+    rows.push({ signed, id, repeat, force: false, photo: f.photo, linked: !!f.linked, choice, choiceMsg, day, signedDate: f.signedDate, exam: f.exam, accession: f.accession, akey: k, key, points, ask: c.ask || null, norm, remember: !(f.unreadable || f.partial), late, ageDays: f.ageDays });
   }
 
   let workDate = current;
   { const counts = {}; let best = 0; rows.forEach(r => { if(r.day) counts[r.day] = (counts[r.day]||0) + 1; });
     for(const d in counts) if(counts[d] > best){ best = counts[d]; workDate = d; }
     if(!best){ for(const d in dates) if(dates[d] > best){ best = dates[d]; workDate = d; } } }
+  // One upload is one shift's work: exams signed on another day stay with the photo's main day,
+  // unless the schedule shows you had a shift on that other day too.
+  rows.forEach(r => {
+    if(!r.day || r.day === workDate) return;
+    const ownShift = state.schedule && state.schedule.name && targetOn(r.day);
+    if(!ownShift){ r.otherDate = r.day; r.day = workDate; }
+  });
   // Each exam goes to its own day (overnight work counts toward the night the shift started)
   // unless the day below is changed by hand, which sends them all there.
   let dayPicked = false;
@@ -662,11 +683,24 @@ function showReview(found, dates, photos){
   actions.append(cancel, add); sheet.append(actions);
 
   // Accession numbers already logged on any day, so an exam is never counted twice.
-  function existingKeys(){ const s = new Map(); for(const d in state.days) dayRows(d).forEach(r => { if(r.accession) s.set(examId(r.accession, r.exam), d); }); return s; }
-  const dupOf = (r, have) => !r.force && (r.repeat || have.has(r.id));
+  function existingKeys(){ const s = new Map(); for(const d in state.days) dayRows(d).forEach(r => { const id = examId(r.accession, r.exam, r.signed); if(id != null) s.set(id, d); }); return s; }
+  // Rows with nothing to match on (no accession, no signed time): if that day already has saved
+  // exams of the same kind that also had nothing to match on, pair them up one for one and treat
+  // them as probably already logged. Tapping + still counts one.
+  function markUnmatched(){
+    const spare = new Map();
+    for(const d in state.days) dayRows(d).forEach(e => { if(!e.accession && !e.signed){ const k = d + whatOf(e.exam); spare.set(k, (spare.get(k)||0) + 1); } });
+    rows.forEach(r => {
+      r.maybeDup = false;
+      if(r.id != null || r.repeat) return;
+      const k = dayFor(r) + whatOf(r.exam);
+      if(spare.get(k) > 0){ r.maybeDup = true; spare.set(k, spare.get(k) - 1); }
+    });
+  }
+  const dupOf = (r, have) => !r.force && (r.repeat || have.has(r.id) || r.maybeDup);
 
   function draw(){
-    const have = existingKeys();
+    const have = existingKeys(); markUnmatched();
     list.textContent = '';
     let n = 0, pts = 0, dups = 0, open = 0;
     rows.forEach((r) => {
@@ -675,7 +709,7 @@ function showReview(found, dates, photos){
       const t = document.createElement('div'); t.className = 't';
       const ex = document.createElement('div'); ex.className = 'ex'; ex.textContent = r.exam;
       const meta = document.createElement('div'); meta.className = 'meta';
-      meta.textContent = (isDup ? (r.repeat ? 'Same exam appears earlier in these photos · ' : 'Already logged ' + (['Today','Yesterday'].includes(prettyDay(have.get(r.id))) ? prettyDay(have.get(r.id)).toLowerCase() : 'on ' + prettyDay(have.get(r.id))) + ' · ') : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + r.accession + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
+      meta.textContent = (isDup ? (r.repeat ? 'Same exam appears earlier in these photos · ' : r.maybeDup ? 'Probably already logged (nothing on this row to check) · ' : 'Already logged ' + (['Today','Yesterday'].includes(prettyDay(have.get(r.id))) ? prettyDay(have.get(r.id)).toLowerCase() : 'on ' + prettyDay(have.get(r.id))) + ' · ') : (r.key && r.key!=='learned' ? labelFor(r.key)+' · ' : r.key==='learned' ? 'Your earlier choice · ' : '')) + (r.accession || (r.signed ? 'signed ' + clockText(Number(r.signed.split(' ')[1])) : 'no accession read')) + (r.late && !isDup ? ' · read ' + r.ageDays + ' days later +' + M.LATE_BONUS : '');
       t.append(ex, meta);
       if(r.ask && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.ask; t.append(why); }
       if(r.choice && !isDup){ const why = document.createElement('div'); why.className = 'why'; why.textContent = r.choiceMsg; t.append(why); }
@@ -697,9 +731,11 @@ function showReview(found, dates, photos){
     });
     askNote.hidden = !rows.some(r => r.ask);
     askNote.textContent = open ? open + (open===1?' exam needs':' exams need') + ' points. Pick points or Skip. For exams not on your chart, your choice is remembered for that exam name.' : 'Your picks for exams not on the chart will be remembered for next time.';
+    const kept = rows.filter(r => r.otherDate && !dayPicked && !dupOf(r, have)).length;
     const moved = {}; rows.forEach(r => { const d = dayFor(r); if(!dupOf(r, have) && d !== revDate.value) moved[d] = (moved[d]||0) + 1; });
     const movedTxt = Object.keys(moved).map(d => moved[d] + (moved[d]===1?' exam goes':' exams go') + ' to ' + prettyDay(d) + (d < revDate.value ? (shiftLabel(d) ? ' (' + shiftLabel(d) + ' shift)' : ' (overnight work counts toward the night before)') : '')).join('; ') + (Object.keys(moved).length ? '. Change the day above to put them all on one day' : '');
-    dupNote.textContent = [dups ? dups + (dups===1?' looks like a repeat':' look like repeats') + ' and won\'t be counted. Tap + on one to count it anyway.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
+    const keptTxt = kept ? kept + (kept===1?' exam was':' exams were') + ' signed on another day but ' + (kept===1?'is':'are') + ' counted with this shift.' : '';
+    dupNote.textContent = [keptTxt, dups ? dups + (dups===1?' looks like a repeat':' look like repeats') + ' and won\'t be counted. Tap + on one to count it anyway.' : '', movedTxt ? movedTxt + '.' : ''].filter(Boolean).join(' ');
     // While picks are missing the button stays tappable and jumps to the next exam that needs one.
     add.disabled = !open && n === 0;
     add.textContent = open ? 'Pick points for ' + open + ' more ↓' : n ? 'Add ' + n + (n===1?' exam':' exams') + ' · ' + pts + ' pts' : 'Nothing new to add';
@@ -713,12 +749,13 @@ function showReview(found, dates, photos){
       const s = need.querySelector('select'); if(s) setTimeout(() => s.focus({ preventScroll: true }), 350);
       return;
     }
-    const have = existingKeys(); const perDay = {};
+    const have = existingKeys(); markUnmatched(); const perDay = {};
     let n = 0, pts = 0, newSpine = 0, spineDay = null;
     rows.forEach(r => {
       if(dupOf(r, have) || r.skip || r.points==null) return;
       if(r.ask && r.remember) state.learned[r.norm] = r.points;
       const entry = { exam: r.exam, accession: r.accession, akey: r.akey, key: r.key || 'learned', points: r.points, source: 'scan', at: Date.now() };
+      if(r.signed) entry.signed = r.signed;
       if(r.late){ entry.late = true; entry.ageDays = r.ageDays; }
       const d = dayFor(r) || current;
       (state.days[d] = state.days[d] || []).push(entry); perDay[d] = (perDay[d]||0) + 1;

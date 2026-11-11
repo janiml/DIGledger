@@ -315,7 +315,8 @@
         const zone = body.slice(0, 12), suffix = body.slice(12);
         // Accessions here start with five zeros; letters there are misread zeros.
         const head = zone.slice(0, 5).replace(/[A-Z|]/g, '0');
-        const rest = zone.slice(5).replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch);
+        // The sixth digit is 3 on this worklist's numbers; S/B/E there is a misread 3.
+        const rest = zone.slice(5, 6).replace(/[SBE]/, '3').replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch) + zone.slice(6).replace(/[A-Z|]/g, (ch) => TO_DIGIT[ch] || ch);
         const digits = head + rest;
         if (head !== '00000' || !/^\d{12}$/.test(digits) || !/^[A-Z]{1,3}$/.test(suffix)) continue;
         if ((zone.slice(5).match(/\d/g) || []).length < 5) continue;
@@ -335,15 +336,17 @@
   function daysBetween(a, b) { const t = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((t(b) - t(a)) / 86400000); }
 
   function isoDate(m) {
-    let mo = String(m[1]); if (mo.length === 2 && Number(mo) > 12 && /[47]/.test(mo[0])) mo = '1' + mo[1];
-    return m[3] + '-' + mo.padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
+    let mo = String(m[1]); if (mo.length === 2 && Number(mo) > 12) mo = mo.replace(/[4779]/g, '1');
+    // A year past next year is a misread last digit ("2028" for 2026).
+    let y = m[3]; const now = new Date().getFullYear(); if (Number(y) > now + 1) y = String(now);
+    return y + '-' + mo.padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
   }
 
   // Parse OCR text of a worklist screenshot into exam rows.
   // Returns {rows:[{exam, accession, examDate, signedDate, ageDays}], workDate}
   // OCR sometimes drops the spaces in an exam name ("CTANGIOHEADANDNECK"). Split long glued words
   // back into known worklist words; leave the word alone if it doesn't split cleanly.
-  const VOCAB = ['ABDOMEN','ANGIOGRAM','ANGIO','AND','ANKLE','AORTA','BILAT','BIOPSY','BRAIN','BREAST','CERVICAL','CHEST','COMPLETE','CON','CONTRAST','CTA','CT','DIAGNOSTIC','ELBOW','EXTREMITY','HEAD','HIP','KNEE','LEFT','LIMITED','LOWER','LUMBAR','MAMMO','MRA','MRI','MR','NECK','ORBITS','PELVIS','PE','RIGHT','SCREENING','SHOULDER','SINUS','SPINE','STONE','THORACIC','TOMO','UPPER','US','VENOGRAM','WITHOUT','WITH','WO','WRIST','W','BI'];
+  const VOCAB = ['SCREENING','LOW','DOSE','LUNG','HEPATOBILIARY','THYROID','SOFT','TISSUE','RENAL','FLUOROSCOPY','ESOPHOGRAM','BARIUM','SWALLOW','MODIFIED','GUIDED','THORACENTESIS','PARACENTESIS','CVC','REMOVAL','TUNNEL','PORT','UPPER','GI','EXTREMITY','NONVASCULAR','PELVIC','EF','WO','ABDOMEN','ANGIOGRAM','ANGIO','AND','ANKLE','AORTA','BILAT','BIOPSY','BRAIN','BREAST','CERVICAL','CHEST','COMPLETE','CON','CONTRAST','CTA','CT','DIAGNOSTIC','ELBOW','EXTREMITY','HEAD','HIP','KNEE','LEFT','LIMITED','LOWER','LUMBAR','MAMMO','MRA','MRI','MR','NECK','ORBITS','PELVIS','PE','RIGHT','SCREENING','SHOULDER','SINUS','SPINE','STONE','THORACIC','TOMO','UPPER','US','VENOGRAM','WITHOUT','WITH','WO','WRIST','W','BI'];
   function unglue(word) {
     if (word.length < 10 || !/^[A-Z]+$/.test(word)) return word;
     const memo = {};
@@ -357,8 +360,55 @@
     return parts ? parts.join(' ') : word;
   }
 
+  function fixXr(u) {
+    // "USABDOMEN", "NMHEPATOBILIARY", "CTLUNG", "FLFLUOROSCOPY", "IRCVC": split the modality off.
+    u = u.replace(/(^|[^A-Z])(CT|MR|US|NM|FL|IR|MG|MM|VUC)(?=(ABD|ANGIO|BREAST|BRAIN|CHEST|CERV|CVC|DUPLEX|ELBOW|ESOPH|EXTREM|FLUORO|GUIDED|HEAD|HEPATO|KNEE|LUMBAR|LUNG|NECK|PELVI|RENAL|SCREEN|SHOULDER|SOFT|SPINE|THORA|THYROID|UPPER|VENOUS|BARIUM|BONE|CAROTID|DOPPLER|PARACENT|BIOPSY|DRAIN|TUNNEL|PORT|PICC|LOWER|OB|SCROT|TESTI|UTER|RETRO|TRANS|AORTA|STROKE|ORBIT|FACE|SINUS|PET)[A-Z]{0,30})/g, '$1$2 ');
+    u = u.replace(/\b[A-Z]{10,}\b/g, unglue);
+    return u.replace(/(^|[^A-Z])[X*%A]R(?=(CHEST|FOOT|HAND|KNEE|WRIST|ANKLE|HIP|SHOULDER|ELBOW|SPINE|PELVIS|ABD|KUB|FEMUR|TIB|HUMER|FOREARM|FINGER|TOE|SKULL|RIB|NECK|SINUS|FACE)|\b)/g, '$1XR ');
+  }
+  // An exam name at the start of a row: a modality word followed by a real word.
+  const EXAM_START = /(?:^|[^A-Z])((?:CTA|CT|MRI|MRA|MR|US|VUC|MM|MG|XR|NM|PET|FL|IR)\s+)(?=[A-Z<]{2,})/;
+  // Words that turn up when an exam name wraps onto a second line.
+  const CONT_WORDS = new Set(['AND','NECK','HEAD','CON','CONTRAST','WO','W','DOSE','LOW','MODIFIED','SWALLOW','BARIUM','PORT','RIGHT','LEFT','BILAT','NONVASCULAR','VASCULAR','LIMITED','PERF','PERFUSION','WITH','WITHOUT','CHEST','ABDOMEN','PELVIS','SPINE','ORBITS','FACE','VIEWS','VIEW','MIN','1V','2V','3V','4V','PE','RUNOFF','STONE','PROTOCOL','ENTEROGRAPHY','UROGRAM','CHOLANGIOGRAM','COMPLETE']);
+  function continuation(line) {
+    let u = String(line || '').toUpperCase();
+    if (!u.trim() || ACCESSION.test(u) || CATEGORY.test(u) || CATEGORY_XR.test(u) || EXAM_START.test(u.slice(0, 30))) return '';
+    // Skip leftovers of the patient column (MRN digits, "(... MTX)") at the start.
+    u = u.replace(/^\W*(?:\S*[\d()]\S*\s+)*/, (m) => m.replace(/[^\s]/g, ' '));
+    const chunk = u.trim().split(/\s{2,}|\s(?=\S*\d\S*\/)/)[0];
+    const words = chunk.split(/\s+/).flatMap(w => CONT_WORDS.has(w) ? [w] : splitTwo(w));
+    if (!words.length || words.length > 4 || words.some(w => !CONT_WORDS.has(w))) return '';
+    if (words.length === 1 && words[0] === 'COMPLETE') return '';
+    return words.join(' ');
+  }
+  function splitTwo(w) {
+    for (let k = 1; k < w.length; k++) if (CONT_WORDS.has(w.slice(0, k)) && CONT_WORDS.has(w.slice(k))) return [w.slice(0, k), w.slice(k)];
+    return [w];
+  }
+
+  // Mend dates the reader garbles: a date run into its time ("11/9/20265:45"), a dot for the
+  // space ("11/9/2026.4:40"), and slashes read as 1, 7 or 9 ("411912026", "11797/2026" → 11/9/2026).
+  function fixDates(s) {
+    s = String(s).replace(/(\b|\/)(20\d{2})[._]*(?=\d{1,2}[:.]\d{2})/g, '$1$2 ').replace(/(20\d{2})[._]+(?=\d{1,2}[:.]\d{2})/g, '$1 ');
+    return s.replace(/(?<![\d\/])([0-9\/|]{4,7})(20\d{2})\b/g, (m, P, y) => {
+      if (/^\d{1,2}\/\d{1,2}\/$/.test(P)) return m;
+      const one = (c) => /[1479]/.test(c) ? '1' : c;
+      const mo = '1' + (/[012]/.test(P[1]) ? P[1] : one(P[1]));
+      // Too blurry to repair: mark it so the row borrows the date the other rows show.
+      const blurry = '0/0/' + y;
+      if (!/[147]/.test(P[0]) || Number(mo) > 12) return blurry;
+      const sep = /[\/179|]/;
+      const day = sep.test(P[2]) ? P.slice(3, -1) : P.slice(2, -1);
+      if (!sep.test(P[P.length - 1]) || !/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > 31) return blurry;
+      return mo + '/' + Number(day) + '/' + y;
+    });
+  }
+
   function stampsIn(s) {
-    return [...String(s).matchAll(DATE_TIME)].map(m => ({ d: isoDate(m), t: clock(m[4], m[5], m[6]) })).filter(x => validIso(x.d))
+    s = fixDates(s);
+    return [...String(s).matchAll(DATE_TIME)].map(m => ({ d: isoDate(m), t: clock(m[4], m[5], m[6]),
+        marked: !!m[6] || (m[4] != null && (Number(m[4]) > 12 || Number(m[4]) === 0 || /^0\d/.test(m[4]))) }))
+      .map(x => /-00-00$/.test(x.d) ? Object.assign(x, { d: '?' }) : x).filter(x => x.d === '?' || validIso(x.d))
       .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.t ?? -1) - (b.t ?? -1));
   }
 
@@ -368,16 +418,43 @@
     const rows = [];
     // The list's Start/End Date filter sits above the first row. When both are the same day,
     // that is the day everything on the list was signed.
-    const firstRow = lines.findIndex(l => ACCESSION.test(l.toUpperCase()));
+    let firstRow = lines.findIndex(l => ACCESSION.test(l.toUpperCase()));
+    // Rows start below the column header ("Exam  Accession  RIS Status ..."), or at the first accession.
+    const hdr = lines.findIndex(l => /\bEXAM\b/i.test(l) && /ACCESS|STATUS|JOB/i.test(l));
+    const firstExam = hdr >= 0 ? hdr + 1 : (firstRow >= 0 ? Math.max(0, firstRow - 1) : 0);
+    if (firstRow < 0 && hdr >= 0) firstRow = hdr + 1;
     const headDates = stampsIn(lines.slice(0, firstRow < 0 ? lines.length : firstRow).join('\n')).map(s => s.d);
     const listDate = headDates.length && headDates.every(d => d === headDates[0]) ? headDates[0] : null;
     const dateCounts = {};
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const acc = line.toUpperCase().match(ACCESSION);
-      if (!acc) continue;
-      const before = line.slice(0, acc.index).toUpperCase().replace(/[A-Z]{10,}/g, unglue)
-        .replace(/(^|[^A-Z])[X*%A]R(?=(CHEST|FOOT|HAND|KNEE|WRIST|ANKLE|HIP|SHOULDER|ELBOW|SPINE|PELVIS|ABD|KUB|FEMUR|TIB|HUMER|FOREARM|FINGER|TOE|SKULL|RIB|NECK|SINUS|FACE)|\b)/g, '$1XR ');
+      if (used.has(i)) continue;
+      let line = lines[i];
+      let acc = line.toUpperCase().match(ACCESSION);
+      let noAcc = false;
+      if (!acc) {
+        // No readable accession: find the row by its exam name instead. The exam starts with a
+        // modality word near the start of the line and runs until the next column.
+        const L = fixXr(line.toUpperCase());
+        if (i < firstExam || CATEGORY.test(L) || CATEGORY_XR.test(L)) continue;
+        const m = L.match(EXAM_START);
+        if (!m || m.index > 30) continue;
+        if (!/(ABD|ANGIO|BREAST|BRAIN|HEAD|CHEST|SPINE|NECK|PELV|RENAL|KIDNEY|THYROID|LUNG|KNEE|HIP|FOOT|HAND|WRIST|ANKLE|SHOULDER|ELBOW|KUB|FLUORO|ESOPH|BARIUM|GI\b|HEPATO|BONE|CAROTID|VENOUS|DOPPLER|EXTREM|SOFT|SCROT|UTER|OB\b|ORBIT|FACE|SINUS|AORTA|STROKE|MAMMO|SCREEN|BIOPSY|DRAIN|THORA|PARACENT|CVC|PICC|PORT|TUNNEL)/.test(L.slice(m.index, m.index + 60))) continue;
+        const start = m.index + m[1].length;
+        const rest = L.slice(start);
+        const cut = rest.search(/\s{2,}|\s[-—–=_]*\S*\d\S{4,}|\sCOMPLETE\b|\sADDEND|\s\d{1,2}\/\d/);
+        const end = start + (cut < 0 ? rest.length : cut);
+        // The accession may sit on the next line on a tilted photo.
+        const nx = (lines[i + 1] || '').toUpperCase(), nacc = nx.match(ACCESSION);
+        if (nacc && !EXAM_START.test(nx.slice(0, nacc.index)) && !/[A-Z]{3,}/.test(nx.slice(0, nacc.index).replace(/\b(COMPLETE|SIGNED|STAT|NORMAL)\b/g, ''))) {
+          used.add(i + 1);
+          line = L.slice(0, end) + ' ' + nx.slice(nacc.index) + '  ' + L.slice(end);
+          acc = line.match(ACCESSION);
+        } else {
+          line = L; noAcc = true;
+          acc = Object.assign([''], { index: end });
+        }
+      }
+      const before = fixXr(line.slice(0, acc.index).toUpperCase().replace(/[A-Z]{10,}/g, unglue));
       // Patient names come first ("LAST, FIRST"); the exam starts at the first modality word after the comma.
       const commaAt = before.indexOf(',');
       const searchFrom = commaAt >= 0 ? commaAt + 1 : 0;
@@ -413,9 +490,9 @@
       }
       let exam = tail.slice(mod.index).replace(/[^A-Z0-9\/<>&+\- .()]/g, ' ').replace(/\s+/g, ' ').trim();
       // An exam that wraps ("CT CERVICAL SPINE WO" / "CON") — pull a short continuation word from the next line.
-      const next = (lines[i + 1] || '').toUpperCase();
-      const cont = next.match(/^\W*(?:[A-Z]\W{0,3})?\s*(CON|CONTRAST|W\/O CON|WO CON)\b/);
-      if (cont && /\b(WO|W|W\/O)$/.test(exam)) exam += ' CON';
+      // A long exam name wraps onto the next line ("CT ABDOMEN PELVIS W" / "CON",
+      // "US SOFT TISSUE HEAD" / "AND NECK", "CT LUNG SCREENING LOW" / "DOSE").
+      if (!used.has(i + 1)) { const more = continuation(lines[i + 1]); if (more) exam += ' ' + more; }
       // Dates for this row: on the same line after the accession, or on the line below it
       // (the worklist shows the exam date and time under the accession number).
       const nextLine = lines[i + 1] && !ACCESSION.test(lines[i + 1].toUpperCase()) ? lines[i + 1] : '';
@@ -423,22 +500,48 @@
       const addendum = /ADDEN/i.test(line.slice(acc.index + acc[0].length) + ' ' + nextLine);
       // A row spans two lines: the exam date sits under the accession, and some layouts also show
       // the signed date and time ("Job State") on the first line. Take the dates from both lines.
-      const stamps = stampsIn(line.slice(acc.index + acc[0].length) + '  ' + nextLine);
+      const around = line.slice(acc.index + acc[0].length) + '  ' + nextLine;
+      let stamps = stampsIn(around);
+      // One date on each line: the first line's is the signed date (Job State), the second line's
+      // is the exam date. Put them in that order whatever their times say.
+      const s1 = stampsIn(line.slice(acc.index + acc[0].length)), s2 = stampsIn(nextLine);
+      if (s1.length === 1 && s2.length === 1 && (s2[0].d === '?' || s1[0].d === '?' || s2[0].d <= s1[0].d)) stamps = [s2[0], s1[0]];
       let examDate = null, signedDate = null, signedTime = null, oneDate = false;
       if (stamps.length > 1) {
         // Both dates on the row: the earlier is the exam, the later is when it was signed.
         examDate = stamps[0].d; signedDate = stamps[stamps.length - 1].d; signedTime = stamps[stamps.length - 1].t;
+        // "11/9/2026 1:23" with its "pm" wrapped onto the line below: find the loose am/pm.
+        const last = stamps[stamps.length - 1];
+        if (!last.marked && signedTime != null) {
+          const loose = around.toUpperCase().replace(/\d{1,2}[:.]\d{2}\s*[AP]\.?M\b/g, ' ').match(/(?:^|\s)([AP])\.?M(?=\s|$)/);
+          if (loose) { let hh = Math.floor(signedTime / 60) % 12; if (loose[1] === 'P') hh += 12; signedTime = hh * 60 + signedTime % 60; }
+          else signedTime = null;
+        }
       } else if (stamps.length === 1) {
         // One date on the row is the exam date; the list's date filter is the day it was signed.
         examDate = stamps[0].d;
         signedDate = listDate && listDate >= examDate ? listDate : examDate;
         oneDate = !listDate;
       } else signedDate = listDate;
-      const ageDays = examDate && signedDate ? daysBetween(examDate, signedDate) : null;
-      rows.push({ unreadable, partial, oneDate, exam, accession: cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
+      const ageDays = examDate && signedDate && examDate !== '?' && signedDate !== '?' ? daysBetween(examDate, signedDate) : null;
+      rows.push({ noAcc, unreadable, partial, oneDate, exam, accession: noAcc ? '' : cleanAccession(acc[0]), examDate, signedDate, signedTime, ageDays, addendum });
     }
     // A row where the signed date wasn't read has only its exam date. When the other rows on the
     // photo show when they were signed, this one was signed then too, not on its exam date.
+    // Blurry dates ('?') borrow from the rest of the photo: the list's date filter, or the date
+    // most rows were signed. A blurry exam date is taken as the signed date (no late bonus guessed).
+    {
+      const c = {}; let best = null, bn = 0;
+      rows.forEach(r => { if (r.signedDate && r.signedDate !== '?') c[r.signedDate] = (c[r.signedDate] || 0) + 1; });
+      for (const d in c) if (c[d] > bn) { bn = c[d]; best = d; }
+      const fill = listDate || best;
+      rows.forEach(r => {
+        if (r.signedDate === '?' || !r.signedDate) r.signedDate = fill;
+        if (r.examDate === '?') r.examDate = r.signedDate;
+        if (r.examDate && r.signedDate && r.examDate > r.signedDate) r.examDate = r.signedDate;
+        r.ageDays = r.examDate && r.signedDate ? daysBetween(r.examDate, r.signedDate) : null;
+      });
+    }
     const full = {}; let main = null, mainN = 0;
     rows.forEach(r => { if (!r.oneDate && r.examDate && r.signedDate && r.examDate !== r.signedDate || (!r.oneDate && r.signedTime != null)) full[r.signedDate] = (full[r.signedDate] || 0) + 1; });
     for (const d in full) if (full[d] > mainN) { mainN = full[d]; main = d; }
@@ -465,7 +568,8 @@
   // Key used to spot the same exam across overlapping screenshots, tolerant of OCR noise in the leading zeros.
   function accessionKey(a) {
     const m = String(a || '').toUpperCase().match(/(\d{6,})([A-Z]*)$/);
-    return m ? m[1].slice(-9) + m[2] : String(a || '').toUpperCase();
+    // Last six digits plus the letters: the leading digits are the ones the reader garbles most.
+    return m ? m[1].slice(-6) + m[2] : String(a || '').toUpperCase();
   }
 
   const LATE_DAYS = 3, LATE_BONUS = 1, HARDWARE_BONUS = 2;
