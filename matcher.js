@@ -539,6 +539,22 @@
         if (r.signedDate === '?' || !r.signedDate) r.signedDate = fill;
         if (r.examDate === '?') r.examDate = r.signedDate;
         if (r.examDate && r.signedDate && r.examDate > r.signedDate) r.examDate = r.signedDate;
+        // An exam a week or more older than its signing is almost always a misread day: "11/13"
+        // read as "11/3" (a dropped digit, or "111312026" split the wrong way). If putting the
+        // missing 1 or 2 back gives a date that fits, use it. Over a month old: don't trust it.
+        if (r.examDate && r.signedDate && daysBetween(r.examDate, r.signedDate) >= 7) {
+          const [y, mo, d] = r.examDate.split('-').map(Number);
+          let fixed = null;
+          if (d < 10) for (const add of [10, 20, 30]) {
+            const c = y + '-' + String(mo).padStart(2, '0') + '-' + String(d + add).padStart(2, '0');
+            if (validIso(c) && c <= r.signedDate && daysBetween(c, r.signedDate) < 7) { fixed = c; break; }
+          }
+          // A misread month ("10/13" for 11/13): the same day in the signing month.
+          if (!fixed) { const sm = r.signedDate.slice(0, 8), c = sm + String(d).padStart(2, '0');
+            if (validIso(c) && c <= r.signedDate && daysBetween(c, r.signedDate) < 7) fixed = c; }
+          if (fixed) r.examDate = fixed;
+          else if (daysBetween(r.examDate, r.signedDate) > 31) r.examDate = r.signedDate;
+        }
         r.ageDays = r.examDate && r.signedDate ? daysBetween(r.examDate, r.signedDate) : null;
       });
     }
