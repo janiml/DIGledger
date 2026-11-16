@@ -56,6 +56,7 @@
     mr_wo: [5, 'MR Body/Brain/Joint/Spine W/O'],
     mra_neck_wo: [5, 'MR Angio Neck W/O'],
     mra_head: [5, 'MR Angio Head'],
+    mrv_brain: [5, 'MR Venogram Brain (MRV)'],
     cta_head: [5, 'CT Angio Head'],
     mr_orbits_face_neck_wc: [5, 'MR Orbits/Face/Neck W/'],
     mr_orbits_face_neck_wwo: [7, 'MR Orbits/Face/Neck W/ and W/O'],
@@ -124,6 +125,7 @@
     u = u.replace(/\bW\s*\/?\s*\(?\s*C[O0]N(TRAST)?\b|\bWITH\s*C[O0]N(TRAST)?\b/g, ' WC ');
     u = u.replace(/\bMRI\b/g, 'MR');
     u = u.replace(/\bMRA\b/g, 'MR MRA');
+    u = u.replace(/\bMRV\b/g, 'MR MRV');
     u = u.replace(/\bLDCT\b/g, 'CT LDCT');
     // The worklist cuts "NECK" to "NEC" in long names ("CT ANGIO HEAD AND NEC W PERF").
     u = u.replace(/\bHEAD\s*(AND|&|\/|\+)?\s*NECK?\b/g, 'HEAD AND NECK');
@@ -158,7 +160,7 @@
     if (has(u, CT) && has(u, /GUIDED|BIOP|DRAIN|ABLAT|ASPIR/)) return { key: 'ct_guided' };
     if (has(u, MAMMO) && has(u, /POST\s*-?\s*BIOP|POST\s*PROC/)) return { key: 'mm_post_biopsy' };
     if (has(u, /LOC\s*WIRE|WIRE\s*LOC|NEEDLE\s*LOC|LOCALIZ|STEREO/) || (has(u, MAMMO) && has(u, /BIOP/))) return { key: 'mg_biopsy_loc' };
-    if (has(u, US) && has(u, /BREAST/) && has(u, /BIOP|ASPIR|\bFNA\b/)) return { key: 'us_breast_biopsy' };
+    if (has(u, US) && has(u, /BREAST/) && has(u, /BIOP|\bBX\b|ASPIR|\bFNA\b/)) return { key: 'us_breast_biopsy' };
     if (has(u, US) && has(u, /BIOP|ASPIR|\bFNA\b|DRAIN|GUIDED|INJECT|PROCEDURE/)) return { key: 'us_procedure' };
 
     // Cardiac / vascular CT
@@ -218,6 +220,7 @@
 
     // MR
     if (has(u, MR)) {
+      if (has(u, /\bMRV\b|VENOGRA/) && has(u, /HEAD|BRAIN|\bVENOUS\s*SINUS|DURAL/)) return { key: 'mrv_brain' };
       if (has(u, /\bMRA\b|ANGIO/)) {
         if (has(u, /NECK/) && !has(u, /HEAD|BRAIN/) && has(u, /\bWO\b/) && !has(u, WWO)) return { key: 'mra_neck_wo' };
         if (has(u, /HEAD|BRAIN|\bCOW\b|WILLIS/) && !has(u, /NECK/)) return { key: 'mra_head' };
@@ -329,6 +332,8 @@
   function cleanAccession(a) {
     const m = String(a).toUpperCase().match(/^A([0-9A-Z]{0,5}?)(\d{6,})([A-Z]*)$/);
     if (!m) return String(a).toUpperCase();
+    // "AB389608"-style numbers keep their letters; on the "A000003…" style, letters there are misread zeros.
+    if (/^[A-Z]+$/.test(m[1]) && m[2].length <= 8) return 'A' + m[1] + m[2] + m[3];
     return 'A' + m[1].replace(/[^0-9]/g, '0') + m[2] + m[3];
   }
 
@@ -431,6 +436,9 @@
       let line = lines[i];
       let acc = line.toUpperCase().match(ACCESSION);
       let noAcc = false;
+      // Above the column header is the toolbar and banners ("Undo Sign: DI16804 - AB380788"), not exams.
+      if (acc && hdr >= 0 && i <= hdr) continue;
+      if (acc && /UNDO\s*SIGN|SCRATCHPAD|COMPLETED\s*JOBS|CRITICAL\s*FINDINGS/i.test(line)) continue;
       if (!acc) {
         // No readable accession: find the row by its exam name instead. The exam starts with a
         // modality word near the start of the line and runs until the next column.
@@ -594,11 +602,11 @@
   // one side 12 points, both sides 14. Biopsies and other linked exams are left as they are.
   function linkedKey(exam) {
     const u = normalize(exam);
-    if (/BIOP|ASPIR|\bFNA\b|LOC\s*WIRE|WIRE\s*LOC|LOCALIZ|STEREO/.test(u)) return null;
+    if (/BIOP|\bBX\b|ASPIR|\bFNA\b|LOC\s*WIRE|WIRE\s*LOC|LOCALIZ|STEREO/.test(u)) return null;
     const usBreast = /\bUS\b|ULTRASOUND|SONO/.test(u) && /BREAST/.test(u);
     if (usBreast) {
       if (/BILAT|BOTH|\bB\/?L\b|\bBI\b/.test(u)) return 'us_breast_linked_bi';
-      if (/LEFT|RIGHT|\bLT\b|\bRT\b/.test(u)) return 'us_breast_linked_uni';
+      if (/LEFT|RIGHT|\bLT\b|\bRT\b|UNILAT|\bUNI\b/.test(u)) return 'us_breast_linked_uni';
       return 'ask';
     }
     // A diagnostic mammogram with the box: the linked ultrasound isn't on the list, so ask its side.
